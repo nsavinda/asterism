@@ -2,6 +2,8 @@
 
 Synced Spotify lyrics drawn on your Linux desktop as constellations that move with the music.
 
+![Lyric Immersive in fullscreen mode: words appear as linked stars over a blurred album cover](docs/demo.gif)
+
 Each word appears as a star at the moment it is sung, and the stars of a line link into a constellation.
 The colours come from the album cover, and the size, motion and brightness follow the beat, the loudness
 and the mood of the song.
