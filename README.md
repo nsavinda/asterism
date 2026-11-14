@@ -20,6 +20,7 @@ Built for **Hyprland** with [Quickshell](https://quickshell.org) and [Spicetify]
 - **Music-reactive.** Reads the audio with `cava`: the active word bounces on the beat, effects stay calm in quiet
   sections and open up when the song lifts, and calm and energetic songs get different animation styles.
 - **Anticipation.** A faint ghost star shows where the next word will land.
+- **Instrumental breaks.** Before the first line, the title and artist take the centre with a thin line that fills as the lyrics approach. In mid-song breaks the song colour pulses harder with the beat.
 - **Running border.** A light circles the screen edge in the song's colour, faster when the music is loud.
 - **Multi-monitor.** In fullscreen, the other monitors get a soft edge glow in the song's colour. They stay usable.
 - **Controls.** IPC commands, a state file for bar buttons, and a remembered on/off state.
@@ -113,6 +114,7 @@ pkill -f "^qs -c lyrics"; qs -c lyrics &
 | `runningBorder`, `borderWidth`, `borderGlow`, `borderSpeedMs`, `beatBorder` | on | The light around the screen edge. |
 | `ambientMonitors` | `true` | Edge glow on the other monitors in fullscreen. |
 | `idleHideMs` | `3500` | Delay before the cursor and hint hide in fullscreen. |
+| `interludeCard`, `interludeMinMs` | `true`, `3000` | Title card before the first line and stronger colour pulse in mid-song breaks, and how long a gap between lines counts as a break. |
 | `port` | `8975` | WebSocket port. Change it in `lyrics-bridge.js` too. |
 
 To pin the overlay to one monitor, uncomment the `screen:` line in the `PanelWindow`.

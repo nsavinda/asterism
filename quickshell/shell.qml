@@ -35,6 +35,8 @@ ShellRoot {
     readonly property bool moodAdaptive: true     // calm songs: gentle & dim; energetic songs: springy & vivid
     readonly property bool bounceBeat: true       // beat pulse rises and falls like a bounce (not a flash)
     readonly property int idleHideMs: 3500        // fullscreen: hide cursor + "Esc" hint after this long
+    readonly property bool interludeCard: true    // intro: title card; mid-song breaks: colour pulses harder
+    readonly property int interludeMinMs: 3000    // a gap between lines this long counts as a break
 
     // album cover from Spotify's MPRIS info (no extension needed)
     readonly property var spotifyPlayer: Mpris.players.values.find(
@@ -57,6 +59,20 @@ ShellRoot {
     property real now: 0
     property int lineIdx: -1
     property int wordIdx: -1
+
+    // Instrumental break: no line is active and the gap to the next one is long.
+    property bool interlude: false
+    property real gapAge: 0         // ms since the gap started
+    property real gapProgress: -1   // 0…1 towards the next line; -1 after the last line
+    property bool gapIntro: true    // the gap before the first line (not a mid-song break)
+    // Mid-song break: 0 → 1 while it lasts. No card; the song colour pulses harder with the music.
+    property real breakK: interludeCard && interlude && !gapIntro && lines.length > 0 && playing ? 1 : 0
+    Behavior on breakK { NumberAnimation { duration: 700; easing.type: Easing.InOutQuad } }
+    // Title card: only before the first line, and for songs with no lyrics at all (fullscreen).
+    // Overlay: only briefly, so it doesn't sit on top of your windows.
+    readonly property bool cardOn: interludeCard && title !== "" && (lines.length === 0
+        ? fullscreen
+        : interlude && gapIntro && (fullscreen || gapAge < 9000))
 
     // ───────── on/off ─────────
     // State file shared with the bar button: "0" = off, anything else / missing = on.
@@ -106,7 +122,7 @@ ShellRoot {
         function exitFullscreen(): void { root.fullscreen = false }
         function isFullscreen(): bool { return root.fullscreen }
         function mood(): string { return "mood " + root.mood.toFixed(2) + " dyn " + root.dyn.toFixed(2) + " beats/12s " + root.hitTimes.length + " energy " + root.energy.toFixed(2) + " base " + root.energyBase.toFixed(2) }
-        function position(): string { return "line " + root.lineIdx + " word " + root.wordIdx + " at " + Math.round(root.now) + "ms" }
+        function position(): string { return "line " + root.lineIdx + " word " + root.wordIdx + " at " + Math.round(root.now) + "ms" + (root.cardOn ? " | title card on" : "") + (root.breakK > 0 ? " | break " + root.breakK.toFixed(2) : "") }
     }
 
     // ───────── music level (cava) ─────────
@@ -214,6 +230,10 @@ ShellRoot {
             lineIdx = -1
             wordIdx = -1
             lines = m.lines || []
+            interlude = false
+            gapIntro = true
+            gapAge = 0
+            gapProgress = -1
             energyBase = energy          // new song → new baseline
             hitTimes = []
             trackStartMs = Date.now()
@@ -230,7 +250,18 @@ ShellRoot {
         for (let i = lines.length - 1; i >= 0; i--) {
             if (lines[i].t <= now) { li = i; break }
         }
+        // gap around `now`: from the end of the last started line to the start of the next
+        const gs = li >= 0 ? lines[li].end : 0
+        const ge = li + 1 < lines.length ? lines[li + 1].t : -1
+        gapIntro = li < 0
         if (li >= 0 && now >= lines[li].end) li = -1
+        gapAge = now - gs
+        gapProgress = ge < 0 ? -1 : Math.max(0, Math.min(1, (now - gs) / Math.max(1, ge - gs)))
+        // starts a moment into the gap and ends a moment before the next line
+        // (up to 1.2 s / 1.5 s, less in short gaps)
+        const gl = ge < 0 ? 1e9 : ge - gs
+        interlude = li < 0 && gl >= interludeMinMs
+            && now - gs >= Math.min(1200, gl * 0.15) && (ge < 0 || ge - now >= Math.min(1500, gl * 0.2))
         let wi = -1
         if (li >= 0) {
             const ws = lines[li].words
@@ -319,15 +350,18 @@ ShellRoot {
             Shape {
                 anchors.fill: parent
                 visible: root.immersive && root.fullscreen
-                opacity: Math.min(0.65, (0.2 + root.energy * 0.7 + root.beat * 0.15) * (0.45 + 0.55 * root.dyn) * (0.6 + 0.55 * root.mood))   // kept soft so the word glow stands out
+                // kept soft so the word glow stands out; in a mid-song break it pulses hard with the beat
+                opacity: Math.min(0.65 + 0.35 * root.breakK,
+                    (0.2 + root.energy * 0.7 + root.beat * 0.15) * (0.45 + 0.55 * root.dyn) * (0.6 + 0.55 * root.mood)
+                    + root.breakK * (0.12 + root.beat * 0.55))
                 ShapePath {
                     strokeColor: "transparent"
                     fillGradient: RadialGradient {
                         centerX: fsBg.width / 2; centerY: fsBg.height * 0.48
                         focalX: centerX; focalY: centerY
                         centerRadius: fsBg.height * 0.75
-                        GradientStop { position: 0.0; color: Qt.alpha(root.liveAccent, 0.32) }
-                        GradientStop { position: 0.5; color: Qt.alpha(root.liveAccent, 0.10) }
+                        GradientStop { position: 0.0; color: Qt.alpha(root.liveAccent, 0.32 + 0.3 * root.breakK) }
+                        GradientStop { position: 0.5; color: Qt.alpha(root.liveAccent, 0.10 + 0.14 * root.breakK) }
                         GradientStop { position: 1.0; color: "transparent" }
                     }
                     PathRectangle { x: 0; y: 0; width: fsBg.width; height: fsBg.height }
@@ -366,7 +400,8 @@ ShellRoot {
             Emitter {            // slow ambient drift
                 system: stars
                 anchors.fill: parent
-                emitRate: 8 + Math.min(1, root.energy * 1.6) * 24 * root.pReact
+                // instrumental breaks: the starfield takes over
+                emitRate: (8 + Math.min(1, root.energy * 1.6) * 24 * root.pReact) * (root.cardOn ? 2 : 1 + root.breakK)
                 lifeSpan: 9000
                 lifeSpanVariation: 3000
                 size: 7
@@ -422,6 +457,8 @@ ShellRoot {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.title
+                    opacity: root.cardOn ? 0 : 1          // the title card shows it instead
+                    Behavior on opacity { NumberAnimation { duration: 700 } }
                     color: Qt.rgba(1, 1, 1, 0.55)
                     font.family: root.fontFamily
                     font.pixelSize: 20
@@ -430,6 +467,8 @@ ShellRoot {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.artist
+                    opacity: root.cardOn ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: 700 } }
                     color: Qt.rgba(1, 1, 1, 0.3)
                     font.family: root.fontFamily
                     font.pixelSize: 14
@@ -524,6 +563,71 @@ ShellRoot {
             ghost: root.ghostStars
         }
 
+        // ───────── title card for instrumental breaks ─────────
+        Column {
+            id: card
+            anchors.centerIn: parent
+            width: parent.width * 0.8
+            spacing: root.fontSize * 0.14
+            opacity: root.cardOn ? (root.playing ? 1 : 0.45) : 0
+            visible: opacity > 0.01
+            scale: (root.cardOn ? 1 : 0.94) + root.pulse * 0.02 * root.dyn    // breathes with the beat
+            Behavior on opacity { NumberAnimation { duration: 900; easing.type: Easing.InOutQuad } }
+            Behavior on scale { NumberAnimation { duration: 120 } }
+
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: root.title
+                color: "white"
+                font.family: root.fontFamily
+                font.pixelSize: Math.round(root.fontSize * 0.6)
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                renderType: Text.CurveRendering
+                layer.enabled: true
+                layer.effect: MultiEffect {
+                    shadowEnabled: true
+                    shadowColor: root.liveAccent
+                    shadowBlur: 1.0
+                    blurMax: 48 + 40 * root.breakK * root.beat
+                    shadowOpacity: 0.9
+                    brightness: root.breakK * root.beat * 0.25
+                    shadowHorizontalOffset: 0
+                    shadowVerticalOffset: 0
+                }
+            }
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: root.artist
+                color: Qt.rgba(1, 1, 1, 0.6)
+                font.family: root.fontFamily
+                font.pixelSize: Math.round(root.fontSize * 0.26)
+                elide: Text.ElideRight
+                renderType: Text.CurveRendering
+            }
+            // thin line that fills as the first lyric approaches
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: root.fontSize * 2.2
+                height: 2
+                radius: 1
+                color: Qt.rgba(1, 1, 1, 0.14)
+                // only before the first line; mid-song breaks have no bar
+                opacity: root.gapIntro && root.gapProgress >= 0 && root.lines.length > 0 ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 500 } }
+                Rectangle {
+                    height: parent.height
+                    radius: 1
+                    width: parent.width * Math.max(0, root.gapProgress)
+                    color: root.liveAccent2
+                }
+            }
+        }
+
         // ───────── running border: light that travels around the screen edge ─────────
         Shape {
             id: runner
@@ -545,7 +649,7 @@ ShellRoot {
                 shadowScale: root.beatBorder ? 1.0 + root.beat * 0.012 : 1.0
                 shadowHorizontalOffset: 0
                 shadowVerticalOffset: 0
-                brightness: root.beatBorder ? 0.1 + root.beat * 0.35 : 0.15
+                brightness: (root.beatBorder ? 0.1 + root.beat * 0.35 : 0.15) + root.breakK * root.beat * 0.4
             }
 
             readonly property real bw: root.borderWidth
