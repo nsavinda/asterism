@@ -28,9 +28,10 @@ Built for **Hyprland** with [Quickshell](https://quickshell.org) and [Spicetify]
 | Hyprland | Uses layer-shell and Hyprland's focus grab. |
 | Quickshell | Tested with 0.3.2. |
 | Qt 6.8 or newer | With `qt6-websockets`. Tested with Qt 6.12. |
-| Spotify + Spicetify | The desktop client. Tested with Spicetify 2.43. |
+| Spotify + Spicetify | The desktop client, with Spicetify already working (`spicetify backup apply` has succeeded once). Tested with Spicetify 2.43. |
 | `cava` | Optional. Without it lyrics work, but nothing reacts to the music. |
 | Inter font | Optional. Any font works; set `fontFamily`. |
+| Spicy Lyrics | Optional. A Spicetify Marketplace extension; when installed, songs it has word-synced lyrics for get exact word timing. |
 
 Arch Linux:
 
@@ -38,7 +39,16 @@ Arch Linux:
 sudo pacman -S quickshell qt6-websockets cava inter-font
 ```
 
-Install Spicetify from [spicetify.app](https://spicetify.app) or the AUR.
+Install Spicetify from [spicetify.app](https://spicetify.app) or the AUR. With the AUR `spotify` package,
+Spicetify needs write access to the Spotify folder before it can apply anything:
+
+```bash
+sudo chmod a+wr /opt/spotify
+sudo chmod a+wr /opt/spotify/Apps -R
+```
+
+Audio must play through this computer for the music-reactive effects; they stay still while Spotify
+plays on another device.
 
 ## Install
 
