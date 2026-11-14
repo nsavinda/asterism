@@ -1,0 +1,15 @@
+# secrets and local-only files — never commit
+*.secret
+.env
+.env.*
+
+# crash dumps
+core
+core.*
+
+# backups / editor
+*.bak
+*.orig
+*~
+.vscode/
+.idea/
