@@ -57,8 +57,8 @@ plays on another device.
 ## Install
 
 ```bash
-git clone https://github.com/nsavinda/lyric-Immersive.git
-cd lyric-Immersive
+git clone https://github.com/nsavinda/asterism.git
+cd asterism
 ./install.sh
 ```
 
