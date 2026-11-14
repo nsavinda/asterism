@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lyric Immersive installer.
+# Asterism installer.
 # Copies the Quickshell config and the Spicetify extension into your home directory.
 # Never uses sudo and never edits your compositor or bar config.
 #

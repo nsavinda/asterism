@@ -1,4 +1,4 @@
-# Project: Lyric Immersive (Spicetify → Quickshell)
+# Project: Asterism (Spicetify → Quickshell)
 
 Notes for an AI coding agent working on this project on the user's own machine. The job is to
 install, configure, test and debug a desktop lyrics visualizer. Work step by step, verify each

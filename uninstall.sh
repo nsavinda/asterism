@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lyric Immersive uninstaller. Removes only what install.sh added.
+# Asterism uninstaller. Removes only what install.sh added.
 #   ./uninstall.sh            ask before restarting Spotify
 #   ./uninstall.sh --apply    run `spicetify apply` without asking (restarts Spotify)
 #   ./uninstall.sh --no-apply never run `spicetify apply`

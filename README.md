@@ -1,10 +1,11 @@
-# Lyric Immersive
+# Asterism
 
 Synced Spotify lyrics drawn on your Linux desktop as constellations that move with the music.
 
-![Lyric Immersive in fullscreen mode: words appear as linked stars over a blurred album cover](docs/demo.gif)
+![Asterism in fullscreen mode: words appear as linked stars over a blurred album cover](docs/demo.gif)
 
 Each word appears as a star at the moment it is sung, and the stars of a line link into a constellation.
+An asterism is a pattern of stars; here, every lyric line becomes one.
 The colours come from the album cover, and the size, motion and brightness follow the beat, the loudness
 and the mood of the song.
 
@@ -134,7 +135,7 @@ Quickshell config "lyrics" (shell.qml + Constellation.qml)
 The extension tries these in order:
 
 1. **Spicy Lyrics' local cache**, if you have the [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics)
-   extension installed. This is where real word timing comes from. Lyric Immersive only reads what Spicy Lyrics
+   extension installed. This is where real word timing comes from. Asterism only reads what Spicy Lyrics
    has already saved inside Spotify. It sends nothing to Spicy Lyrics' servers and is not affiliated with that
    project. A Spicy Lyrics update can change the cache format, in which case this source is skipped.
 2. **Spotify's own lyrics**, line-synced.

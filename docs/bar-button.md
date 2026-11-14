@@ -1,6 +1,6 @@
 # Adding bar buttons
 
-Lyric Immersive is controlled in two ways, so any bar can drive it:
+Asterism is controlled in two ways, so any bar can drive it:
 
 - **IPC commands**, for buttons that only need to *do* something:
   ```bash
