@@ -28,7 +28,8 @@ die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 say "Checking dependencies"
 missing=()
 command -v qs >/dev/null 2>&1        || missing+=("quickshell (provides 'qs')")
-command -v spicetify >/dev/null 2>&1 || missing+=("spicetify")
+HAVE_SPICETIFY=1
+command -v spicetify >/dev/null 2>&1 || { HAVE_SPICETIFY=0; warn "spicetify not found: skipping the Spotify extension. Players are followed over MPRIS with line-synced lyrics"; }
 command -v cava >/dev/null 2>&1      || warn "cava not found: lyrics still work, but nothing will react to the music"
 if command -v pacman >/dev/null 2>&1; then
     pacman -Q qt6-websockets >/dev/null 2>&1 || missing+=("qt6-websockets")
@@ -39,7 +40,7 @@ if command -v fc-match >/dev/null 2>&1; then
 fi
 if [ "${#missing[@]}" -gt 0 ]; then
     printf '  missing: %s\n' "${missing[@]}" >&2
-    die "install the missing packages first (Arch: sudo pacman -S quickshell qt6-websockets cava inter-font; spicetify from the AUR or spicetify.app)"
+    die "install the missing packages first (Arch: sudo pacman -S quickshell qt6-websockets cava inter-font)"
 fi
 
 # ---------- copy helper: back up a different existing file once ----------
@@ -65,7 +66,8 @@ for f in shell.qml Constellation.qml cava.conf; do
     install_file "$HERE/quickshell/$f" "$QS_DIR/$f"
 done
 
-# ---------- Spicetify extension ----------
+# ---------- Spicetify extension (optional) ----------
+if [ "$HAVE_SPICETIFY" = 1 ]; then
 EXT_DIR="$(dirname "$(spicetify -c)")/Extensions"
 say "Installing the Spicetify extension to $EXT_DIR"
 install_file "$HERE/spicetify/lyrics-bridge.js" "$EXT_DIR/lyrics-bridge.js"
@@ -98,6 +100,7 @@ if [ "$APPLY" = "yes" ]; then
 elif [ "$APPLY" = "no" ]; then
     warn "Spotify does not load the extension until you run: spicetify apply"
 fi
+fi
 
 # ---------- (re)start the overlay ----------
 say "Starting the overlay"
@@ -107,7 +110,7 @@ setsid -f qs -c lyrics >/dev/null 2>&1 || warn "could not start 'qs -c lyrics'; 
 
 cat <<'EOF'
 
-Done. Play a song with lyrics in Spotify.
+Done. Play a song with lyrics in Spotify, YouTube Music or any player that supports MPRIS.
 
   Fullscreen on/off   qs -c lyrics ipc call lyrics fullscreen     (Esc also exits)
   Lyrics on/off       qs -c lyrics ipc call lyrics toggle

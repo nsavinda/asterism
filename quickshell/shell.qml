@@ -37,12 +37,31 @@ ShellRoot {
     readonly property int idleHideMs: 3500        // fullscreen: hide cursor + "Esc" hint after this long
     readonly property bool interludeCard: true    // intro: title card; mid-song breaks: colour pulses harder
     readonly property int interludeMinMs: 3000    // a gap between lines this long counts as a break
+    readonly property bool anyPlayer: true        // also follow other players (YouTube Music, browsers, mpv…) over MPRIS
 
-    // album cover from Spotify's MPRIS info (no extension needed)
-    readonly property var spotifyPlayer: Mpris.players.values.find(
-        p => (p.dbusName || "").toLowerCase().includes("spotify")
-          || (p.identity || "").toLowerCase().includes("spotify")) ?? null
-    readonly property string coverArt: spotifyPlayer?.trackArtUrl ?? ""
+    // ───────── sources ─────────
+    // "bridge": the Spicetify extension sends lyrics, colours and position (Spotify).
+    // "mpris":  any other player. Track and position come from MPRIS, lyrics from LRCLIB,
+    //           colours from the cover image. Spotify without the extension works this way too.
+    // The bridge wins while Spotify is playing; otherwise whichever player is playing.
+    function isSpotify(p) {
+        return (p.dbusName || "").toLowerCase().includes("spotify")
+            || (p.identity || "").toLowerCase().includes("spotify")
+    }
+    readonly property var spotifyPlayer: Mpris.players.values.find(p => isSpotify(p)) ?? null
+    property string owner: "bridge"
+    property var mp: null               // the MPRIS player followed when owner is "mpris"
+    property int bridgeClients: 0
+    property bool bridgePlaying: false
+    property var bridgeTrack: null
+    property real bridgePos: 0
+    property real bridgeClock: 0
+    property string mpKey: ""           // identifies the MPRIS track whose lyrics are loaded
+    property string lyricSource: "none"
+    readonly property real startedMs: Date.now()
+
+    // album cover from MPRIS
+    readonly property string coverArt: (owner === "mpris" ? mp : spotifyPlayer)?.trackArtUrl ?? ""
     onCoverArtChanged: console.log("lyrics cover:", coverArt || "(none)")
 
     // live colours: song colours when available, otherwise `accent`. Fade between songs.
@@ -122,6 +141,11 @@ ShellRoot {
         function exitFullscreen(): void { root.fullscreen = false }
         function isFullscreen(): bool { return root.fullscreen }
         function mood(): string { return "mood " + root.mood.toFixed(2) + " dyn " + root.dyn.toFixed(2) + " beats/12s " + root.hitTimes.length + " energy " + root.energy.toFixed(2) + " base " + root.energyBase.toFixed(2) }
+        function source(): string {
+            return root.owner + (root.owner === "mpris" && root.mp ? " (" + (root.mp.identity || root.mp.dbusName) + ")" : "")
+                + " | " + root.artist + " - " + root.title + " | lyrics: " + root.lyricSource + " | lines: " + root.lines.length
+                + " | extension clients: " + root.bridgeClients
+        }
         function position(): string { return "line " + root.lineIdx + " word " + root.wordIdx + " at " + Math.round(root.now) + "ms" + (root.cardOn ? " | title card on" : "") + (root.breakK > 0 ? " | break " + root.breakK.toFixed(2) : "") }
     }
 
@@ -205,7 +229,13 @@ ShellRoot {
         port: root.port
         accept: true
         onClientConnected: function (sock) {
+            root.bridgeClients++
             sock.onTextMessageReceived.connect(function (msg) { root.handle(msg) })
+            sock.onStatusChanged.connect(function (st) {
+                if (st !== WebSocket.Closed) return
+                root.bridgeClients = Math.max(0, root.bridgeClients - 1)
+                if (root.bridgeClients === 0) root.bridgePlaying = false
+            })
         }
         onErrorStringChanged: console.warn("lyrics websocket:", server.errorString)
     }
@@ -214,40 +244,245 @@ ShellRoot {
         let m
         try { m = JSON.parse(msg) } catch (e) { return }
         if (m.type === "track") {
-            console.log("lyrics track:", m.artist, "-", m.title, "| source:", m.source, "| lines:", (m.lines || []).length, "| colors:", JSON.stringify(m.colors || null))
-            title = m.title || ""
-            artist = m.artist || ""
-            const c = m.colors
-            if (dynamicColor && c && c.primary) {
-                liveAccent = c.primary
-                liveAccent2 = c.secondary || Qt.lighter(c.primary, 1.4)
-            } else {
-                liveAccent = accent
-                liveAccent2 = Qt.lighter(accent, 1.4)
-            }
-            win.slotA = -1
-            win.slotB = -1
-            lineIdx = -1
-            wordIdx = -1
-            // drop double quotes (straight and curly) from the words
-            const ls = m.lines || []
-            for (const l of ls) {
-                for (const w of l.words) w.text = w.text.replace(/["\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, "")
-                l.words = l.words.filter(w => w.text.trim() !== "")
-            }
-            lines = ls.filter(l => l.words.length > 0)
-            interlude = false
-            gapIntro = true
-            gapAge = 0
-            gapProgress = -1
-            energyBase = energy          // new song → new baseline
-            hitTimes = []
-            trackStartMs = Date.now()
+            bridgeTrack = m
+            if (owner === "bridge") applyTrack(m)
         } else if (m.type === "state") {
-            basePos = m.position
-            baseClock = Date.now()
-            playing = m.playing
+            bridgePos = m.position
+            bridgeClock = Date.now()
+            bridgePlaying = m.playing
+            if (m.playing && owner !== "bridge") {        // Spotify started: the bridge takes over
+                owner = "bridge"
+                mpKey = ""
+                if (bridgeTrack) applyTrack(bridgeTrack)
+            }
+            if (owner === "bridge") {
+                basePos = m.position
+                baseClock = bridgeClock
+                playing = m.playing
+            }
         }
+    }
+
+    // Show a track: { title, artist, source, colors, lines }. `keepPulse` = same song, lyrics just arrived.
+    function applyTrack(m, keepPulse) {
+        console.log("lyrics track:", m.artist, "-", m.title, "| source:", m.source, "| lines:", (m.lines || []).length, "| colors:", JSON.stringify(m.colors || null))
+        title = m.title || ""
+        artist = m.artist || ""
+        lyricSource = m.source || "none"
+        if (m.colors !== undefined) setColors(m.colors)
+        win.slotA = -1
+        win.slotB = -1
+        lineIdx = -1
+        wordIdx = -1
+        // drop double quotes (straight and curly) from the words
+        const ls = m.lines || []
+        for (const l of ls) {
+            for (const w of l.words) w.text = w.text.replace(/["“”„‟«»]/g, "")
+            l.words = l.words.filter(w => w.text.trim() !== "")
+        }
+        lines = ls.filter(l => l.words.length > 0)
+        interlude = false
+        gapIntro = true
+        gapAge = 0
+        gapProgress = -1
+        if (keepPulse) return
+        energyBase = energy          // new song → new baseline
+        hitTimes = []
+        trackStartMs = Date.now()
+    }
+
+    function setColors(c) {
+        if (dynamicColor && c && c.primary) {
+            liveAccent = c.primary
+            liveAccent2 = c.secondary || Qt.lighter(c.primary, 1.4)
+        } else {
+            liveAccent = accent
+            liveAccent2 = Qt.lighter(accent, 1.4)
+        }
+    }
+
+    // ───────── any player over MPRIS ─────────
+    // Runs twice a second: picks the player to follow, notices track changes, syncs the position.
+    Timer {
+        interval: 500; repeat: true; triggeredOnStart: true
+        running: root.anyPlayer
+        onTriggered: root.pollMpris()
+    }
+
+    function pollMpris() {
+        // just started: give the extension a few seconds to reconnect before treating Spotify as "any player"
+        const bridgeUp = bridgeClients > 0 || Date.now() - startedMs < 6000
+        // Spotify is the bridge's job while the extension is connected
+        const cand = Mpris.players.values.filter(p => !(bridgeUp && isSpotify(p)))
+        if (!(bridgeUp && bridgePlaying)) {
+            const p = cand.find(x => x.isPlaying) ?? null
+            if (p && (owner !== "mpris" || mp !== p) && !(owner === "mpris" && mp && mp.isPlaying)) {
+                owner = "mpris"
+                mp = p
+                mpKey = ""
+            }
+        }
+        if (owner !== "mpris") return
+        if (!mp || !Mpris.players.values.includes(mp)) {      // player closed
+            mp = null
+            playing = false
+            if (bridgeUp && bridgeTrack) { owner = "bridge"; applyTrack(bridgeTrack); basePos = bridgePos; baseClock = Date.now() }
+            return
+        }
+        const key = (mp.trackTitle || "") + "\n" + (mp.trackArtist || "")
+        if (key !== mpKey && (mp.trackTitle || "") !== "") {
+            mpKey = key
+            mprisTrack(key)
+        }
+        // Quickshell extrapolates `position` (seconds) from the player's last report
+        basePos = (mp.positionSupported ? mp.position : 0) * 1000
+        baseClock = Date.now()
+        playing = mp.isPlaying
+    }
+
+    // Titles from video sites carry noise: "Artist - Song (Official Video)", "Artist - Topic".
+    function cleanTitle(t) {
+        return t.replace(/\s*[\(\[][^\)\]]*(official|video|audio|lyric|visuali[sz]er|\bmv\b|\bhd\b|\b4k\b|explicit)[^\)\]]*[\)\]]/ig, "")
+                .replace(/\s*\|.*$/, "").trim()
+    }
+    function cleanArtist(a) {
+        return a.replace(/\s*-\s*Topic$/i, "").replace(/VEVO$/i, "").trim()
+    }
+
+    function mprisTrack(key) {
+        const rawTitle = mp.trackTitle || ""
+        const rawArtist = mp.trackArtist || ""
+        const album = mp.trackAlbum || ""
+        const dur = mp.lengthSupported && mp.length > 0 && mp.length < 86400 ? mp.length : 0   // seconds
+        let t = cleanTitle(rawTitle)
+        const a = cleanArtist(rawArtist)
+        // "Artist - Song" where the artist is already known → keep just the song
+        const pre = t.match(/^(.+?)\s+[-–—]\s+(.+)$/)
+        if (pre && a !== "" && pre[1].toLowerCase() === a.toLowerCase()) t = pre[2]
+        // what to ask LRCLIB for, best guess first
+        const tries = [{ title: t, artist: a }]
+        const parts = t.split(/\s+[-–—]\s+/)
+        if (parts.length === 2) {                     // "Artist - Song" in the title
+            tries.push({ title: parts[1], artist: parts[0] })
+            tries.push({ title: parts[0], artist: parts[1] })
+        }
+        const shown = parts.length === 2 && (a === "" || rawArtist !== a) ? { title: parts[1], artist: parts[0] } : { title: t, artist: a }
+        applyTrack({ title: shown.title, artist: shown.artist, source: "none", colors: undefined, lines: [] })
+        coverSampler.sample()
+        lrclib(tries, 0, album, dur, function (raw, hit) {
+            if (root.mpKey !== key || root.owner !== "mpris") return     // another song by now
+            if (!raw || !raw.length) return
+            applyTrack({ title: hit.title, artist: hit.artist, source: "lrclib", colors: undefined,
+                         lines: buildLines(raw, dur * 1000) }, true)
+        })
+    }
+
+    function httpJson(url, cb) {
+        const x = new XMLHttpRequest()
+        x.onreadystatechange = function () {
+            if (x.readyState !== XMLHttpRequest.DONE) return
+            let j = null
+            if (x.status === 200) { try { j = JSON.parse(x.responseText) } catch (e) {} }
+            cb(j)
+        }
+        x.open("GET", url)
+        x.send()
+    }
+
+    // LRCLIB: exact match first (needs the duration), then a search; next guess if both miss.
+    function lrclib(tries, i, album, dur, cb) {
+        if (i >= tries.length) { cb(null, null); return }
+        const q = tries[i]
+        if (!q.title) { lrclib(tries, i + 1, album, dur, cb); return }
+        const e = encodeURIComponent
+        const search = function () {
+            httpJson("https://lrclib.net/api/search?track_name=" + e(q.title) + (q.artist ? "&artist_name=" + e(q.artist) : ""), function (arr) {
+                let best = null, bestD = 1e9
+                for (const r of (Array.isArray(arr) ? arr : [])) {
+                    if (!r.syncedLyrics) continue
+                    const d = dur > 0 ? Math.abs((r.duration || 0) - dur) : 0
+                    if (d < bestD) { best = r; bestD = d }
+                }
+                if (best && (dur <= 0 || bestD <= 8)) cb(parseLRC(best.syncedLyrics), q)
+                else lrclib(tries, i + 1, album, dur, cb)
+            })
+        }
+        if (dur > 0 && q.artist) {
+            httpJson("https://lrclib.net/api/get?track_name=" + e(q.title) + "&artist_name=" + e(q.artist)
+                     + "&album_name=" + e(album) + "&duration=" + Math.round(dur), function (j) {
+                if (j && j.syncedLyrics) cb(parseLRC(j.syncedLyrics), q)
+                else search()
+            })
+        } else search()
+    }
+
+    function parseLRC(lrc) {
+        const out = []
+        for (const raw of lrc.split("\n")) {
+            const re = /\[(\d+):(\d+(?:\.\d+)?)\]/g
+            const stamps = []
+            let mm
+            while ((mm = re.exec(raw)) !== null) stamps.push(mm)
+            if (!stamps.length) continue
+            const text = raw.replace(/\[[^\]]*\]/g, "").replace(/<[^>]*>/g, "").trim()
+            for (const m of stamps) out.push({ t: (Number(m[1]) * 60 + Number(m[2])) * 1000, text: text })
+        }
+        return out.sort((x, y) => x.t - y.t)
+    }
+
+    // line timing → estimated word timing (same method as the Spicetify extension)
+    function buildLines(ls, duration) {
+        const out = []
+        for (let i = 0; i < ls.length; i++) {
+            const t = ls[i].t, text = ls[i].text
+            if (!text || /^[♪♫\s]*$/.test(text)) continue
+            let next = i + 1 < ls.length ? ls[i + 1].t : duration
+            if (!(next > t)) next = t + 10000
+            const words = text.split(/\s+/).filter(Boolean)
+            const span = Math.min(next - t, words.length * 600 + 800) * 0.85
+            const weights = words.map(w => w.length + 2)
+            const total = weights.reduce((x, y) => x + y, 0)
+            let acc = 0
+            const ws = []
+            for (let k = 0; k < words.length; k++) {
+                ws.push({ text: words[k], t: Math.round(t + span * acc / total) })
+                acc += weights[k]
+            }
+            out.push({ t: t, end: Math.min(next, t + span + 2500), words: ws })
+        }
+        return out
+    }
+
+    // Dominant vivid colour of the cover (same method as the extension): hue buckets weighted
+    // by saturation and brightness, then lifted so it glows on a dark screen. null = greyscale.
+    function coverColors(d) {
+        const B = []
+        for (let i = 0; i < 36; i++) B.push({ w: 0, h: 0, s: 0 })
+        let any = false
+        for (let i = 0; i < d.length; i += 4) {
+            const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255
+            const max = Math.max(r, g, b), min = Math.min(r, g, b), c = max - min
+            if (max < 0.15 || c < 0.08) continue
+            const s = c / max
+            let h = max === r ? ((g - b) / c) % 6 : max === g ? (b - r) / c + 2 : (r - g) / c + 4
+            h = (h * 60 + 360) % 360
+            const w = s * s * max
+            const k = B[Math.min(35, Math.floor(h / 10))]
+            k.w += w; k.h += h * w; k.s += s * w
+            any = true
+        }
+        if (!any) return null
+        let best = 0, bestW = -1
+        for (let i = 0; i < 36; i++) {
+            const w = B[i].w + 0.5 * (B[(i + 35) % 36].w + B[(i + 1) % 36].w)
+            if (w > bestW) { bestW = w; best = i }
+        }
+        const k = B[best]
+        const hue = k.h / k.w / 360
+        const sat = Math.max(0.65, Math.min(1, k.s / k.w))
+        const hx = c => "#" + [c.r, c.g, c.b].map(v => ("0" + Math.round(v * 255).toString(16)).slice(-2)).join("")
+        return { primary: hx(Qt.hsla(hue, sat, 0.62, 1)), secondary: hx(Qt.hsla(hue, sat, 0.75, 1)),
+                 dark: hx(Qt.hsla(hue, sat, 0.18, 1)), from: "cover" }
     }
 
     function tick() {
@@ -567,6 +802,42 @@ ShellRoot {
             beatPulse: root.beatPulse * root.dyn * (0.3 + root.mood)
             mood: root.mood
             ghost: root.ghostStars
+        }
+
+        // Reads the cover's pixels to pick the song colour for MPRIS players (the extension
+        // does this itself for Spotify). Invisible; it only needs to live in a window to paint.
+        Canvas {
+            id: coverSampler
+            width: 32; height: 32
+            opacity: 0
+            property string url: ""
+            function sample() {
+                const u = root.coverArt
+                if (root.owner !== "mpris") return
+                if (!u) { root.setColors(null); return }
+                if (u === url && isImageLoaded(u)) { requestPaint(); return }
+                if (url && url !== u) unloadImage(url)
+                url = u
+                if (isImageLoaded(u)) requestPaint(); else loadImage(u)
+            }
+            onImageLoaded: requestPaint()
+            onPaint: {
+                if (root.owner !== "mpris" || !url || url !== root.coverArt || !isImageLoaded(url)) return
+                const ctx = getContext("2d")
+                ctx.drawImage(url, 0, 0, width, height)
+                const c = root.coverColors(ctx.getImageData(0, 0, width, height).data)
+                console.log("lyrics cover colour:", JSON.stringify(c))
+                root.setColors(c)
+            }
+            Connections {
+                target: root
+                function onCoverArtChanged() { coverSampler.sample() }   // art often arrives after the title
+                function onOwnerChanged() { coverSampler.sample() }
+            }
+            Connections {
+                target: win
+                function onVisibleChanged() { if (win.visible) coverSampler.sample() }
+            }
         }
 
         // ───────── title card for instrumental breaks ─────────

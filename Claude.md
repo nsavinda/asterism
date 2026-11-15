@@ -9,7 +9,7 @@ something physical (play a song, look at the screen). User documentation is in `
 
 - Arch Linux, Hyprland (Wayland)
 - Quickshell (QML) 0.3+, Qt 6.8+ with `qt6-websockets`
-- Spotify desktop client patched with Spicetify
+- Spotify desktop client patched with Spicetify (optional: other players work over MPRIS)
 - `cava` for audio levels (optional), Inter font (optional)
 
 ## What it is
@@ -47,9 +47,13 @@ Quickshell config "lyrics" (quickshell/shell.qml + Constellation.qml)
      the keyboard on every monitor)
    • cava process → beat, bounce, energy, dyn (loudness vs ~17 s baseline), mood
    • cover image from MPRIS (Quickshell.Services.Mpris)
+   • any other player (`anyPlayer`): `pollMpris()` runs every 500 ms, follows the playing MPRIS
+     player, fetches LRCLIB lyrics itself (XMLHttpRequest), samples the cover colour with an
+     invisible Canvas, and syncs the position from MPRIS. `owner` is "bridge" or "mpris";
+     the bridge wins while Spotify plays with the extension connected.
    • state file ~/.local/state/lyrics-constellation ("0" = off) shared with bar buttons
    • IpcHandler target "lyrics": toggle, on, off, isOn, fullscreen, exitFullscreen,
-     isFullscreen, position, mood
+     isFullscreen, position, mood, source
 ```
 
 ### Message protocol (extension → Quickshell)
@@ -101,6 +105,9 @@ equivalent). Show the user the line and where it goes before editing.
   ask the user first.
 - A restart re-reads the state file and may open fullscreen. Note the mode before restarting
   (`qs -c lyrics ipc call lyrics isFullscreen`) and restore it afterwards.
+- MPRIS test without disturbing the screen: run a copy of the config with another `port`,
+  another state file and a tiny window (`qs -p <copy>/shell.qml`) against a fake MPRIS player.
+- QML's JS engine lacks some newer features (`String.matchAll`, `padStart`): avoid them.
 - Protocol test without Spotify: send a fake `track` and a `state` message with
   `playing: true` over the WebSocket.
 
@@ -127,7 +134,7 @@ equivalent). Show the user the line and where it goes before editing.
 `offsetMs`, `accent`, `fontFamily`, `fontSize` (96), `musicReactive`, `beatPulse`,
 `dynamicColor`, `runningBorder`, `borderSpeedMs`, `borderWidth`, `borderGlow`, `immersive`,
 `beatBorder`, `particleReact`, `ghostStars`, `dynamics`, `ambientMonitors`, `moodAdaptive`,
-`bounceBeat`, `idleHideMs`, `interludeCard`, `interludeMinMs`, `startFullscreen`, `port`. The README table explains each.
+`bounceBeat`, `idleHideMs`, `interludeCard`, `interludeMinMs`, `anyPlayer`, `startFullscreen`, `port`. The README table explains each.
 
 ## Possible improvements (only if the user asks)
 

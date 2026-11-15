@@ -1,6 +1,7 @@
 # Asterism
 
-Synced Spotify lyrics drawn on your Linux desktop as constellations that move with the music.
+Synced lyrics drawn on your Linux desktop as constellations that move with the music. Works with Spotify,
+YouTube Music and any other player that supports MPRIS.
 
 ![Asterism in fullscreen mode: words appear as linked stars over a blurred album cover](docs/demo.gif)
 
@@ -9,10 +10,13 @@ An asterism is a pattern of stars; here, every lyric line becomes one.
 The colours come from the album cover, and the size, motion and brightness follow the beat, the loudness
 and the mood of the song.
 
-Built for **Hyprland** with [Quickshell](https://quickshell.org) and [Spicetify](https://spicetify.app).
+Built for **Hyprland** with [Quickshell](https://quickshell.org). [Spicetify](https://spicetify.app) is optional and adds
+word-level timing for Spotify.
 
 ## Features
 
+- **Any player.** Spotify, the YouTube Music desktop app, a browser tab, mpv: anything that reports its track
+  over MPRIS. Spotify with the Spicetify extension gets the best timing.
 - **Word-by-word lyrics.** Uses real word timing when it is available, and estimates it from line timing otherwise.
 - **Two modes.** A click-through overlay above your windows, and a fullscreen mode with a blurred album-cover
   backdrop, ambient light and a starfield. `Esc` leaves fullscreen.
@@ -32,7 +36,8 @@ Built for **Hyprland** with [Quickshell](https://quickshell.org) and [Spicetify]
 | Hyprland | Uses layer-shell and Hyprland's focus grab. |
 | Quickshell | Tested with 0.3.2. |
 | Qt 6.8 or newer | With `qt6-websockets`. Tested with Qt 6.12. |
-| Spotify + Spicetify | The desktop client, with Spicetify already working (`spicetify backup apply` has succeeded once). Tested with Spicetify 2.43. |
+| A music player with MPRIS | Spotify, the [YouTube Music desktop app](https://github.com/th-ch/youtube-music), a browser tab, mpv with `mpv-mpris`, and so on. |
+| Spicetify | Optional, for Spotify. Adds Spotify's own lyrics and exact word timing. Needs Spicetify already working (`spicetify backup apply` has succeeded once). Tested with Spicetify 2.43. |
 | `cava` | Optional. Without it lyrics work, but nothing reacts to the music. |
 | Inter font | Optional. Any font works; set `fontFamily`. |
 | Spicy Lyrics | Optional. A Spicetify Marketplace extension; when installed, songs it has word-synced lyrics for get exact word timing. |
@@ -115,6 +120,7 @@ pkill -f "^qs -c lyrics"; qs -c lyrics &
 | `ambientMonitors` | `true` | Edge glow on the other monitors in fullscreen. |
 | `idleHideMs` | `3500` | Delay before the cursor and hint hide in fullscreen. |
 | `interludeCard`, `interludeMinMs` | `true`, `3000` | Title card before the first line and stronger colour pulse in mid-song breaks, and how long a gap between lines counts as a break. |
+| `anyPlayer` | `true` | Follow any MPRIS player, not only Spotify through the extension. |
 | `port` | `8975` | WebSocket port. Change it in `lyrics-bridge.js` too. |
 
 To pin the overlay to one monitor, uncomment the `screen:` line in the `PanelWindow`.
@@ -122,19 +128,23 @@ To pin the overlay to one monitor, uncomment the `screen:` line in the `PanelWin
 ## How it works
 
 ```
-Spotify + Spicetify extension (lyrics-bridge.js)
-   │  finds lyrics, reads the cover colour, follows playback
-   │  JSON over WebSocket, ws://127.0.0.1:8975
-   ▼
+Spotify + Spicetify extension (lyrics-bridge.js)          any other player
+   │  finds lyrics, reads the cover colour,                   │  track, position and cover
+   │  follows playback                                        │  over MPRIS
+   │  JSON over WebSocket, ws://127.0.0.1:8975                │
+   ▼                                                          ▼
 Quickshell config "lyrics" (shell.qml + Constellation.qml)
    • draws the overlay on a Wayland layer-shell surface
    • reads audio levels from cava
-   • reads the cover image from Spotify's MPRIS metadata
+   • for MPRIS players: fetches lyrics from LRCLIB and picks the colour from the cover
 ```
+
+The overlay follows whichever player is playing. Spotify with the extension connected takes priority
+while it plays. `qs -c lyrics ipc call lyrics source` prints which player and lyric source are in use.
 
 ### Lyric sources
 
-The extension tries these in order:
+For Spotify with the extension, these are tried in order:
 
 1. **Spicy Lyrics' local cache**, if you have the [Spicy Lyrics](https://github.com/Spikerko/spicy-lyrics)
    extension installed. This is where real word timing comes from. Asterism only reads what Spicy Lyrics
@@ -143,13 +153,19 @@ The extension tries these in order:
 2. **Spotify's own lyrics**, line-synced.
 3. **[LRCLIB](https://lrclib.net)**, line-synced.
 
+Every other player (and Spotify without the extension) uses **LRCLIB** only. Titles from video sites are
+cleaned up first ("Artist - Song (Official Video)" becomes artist and song), but a track with an unusual
+title may find no lyrics.
+
 For line-synced lyrics, word times are estimated by spreading a line's words across its duration.
 
 ### Network and privacy
 
-The overlay itself makes no network requests except loading the cover image from Spotify's CDN.
-The extension talks to Spotify's lyrics endpoint, `lrclib.net` (song title, artist, album and duration),
-and Spotify's image CDN. The WebSocket listens on `127.0.0.1` only.
+The overlay loads the cover image from the address the player reports. For players other than Spotify with
+the extension, it also asks `lrclib.net` for lyrics, sending the song title, artist, album and duration.
+The extension talks to Spotify's lyrics endpoint, `lrclib.net` (the same details) and Spotify's image CDN.
+The WebSocket listens on `127.0.0.1` only. Set `anyPlayer` to `false` to follow Spotify through the
+extension only.
 
 ## Troubleshooting
 
@@ -157,6 +173,7 @@ and Spotify's image CDN. The WebSocket listens on `127.0.0.1` only.
 |---|---|
 | Nothing appears | Run `qs -c lyrics` in a terminal and read the log. Check that lyrics are on: `qs -c lyrics ipc call lyrics on`. |
 | `module "QtWebSockets" is not installed` | Install `qt6-websockets`. After a Qt update, a self-built Quickshell needs a rebuild. |
+| No lyrics from YouTube Music or another player | Check `playerctl -l` lists the player and `playerctl metadata` shows a title and artist. `qs -c lyrics ipc call lyrics source` shows what the overlay sees; `lyrics: none` means LRCLIB had no synced lyrics for that title. |
 | No lyrics arrive from Spotify | Run `spicetify apply`. Then `spicetify enable-devtools`, restart Spotify, and check the console for `lyrics-bridge` errors. |
 | A song has no lyrics | The log line `lyrics track: … source: none` means no source had synced lyrics for it. |
 | Lyrics run early or late | Adjust `offsetMs`. Bluetooth headphones delay the audio, so they need a lower value. |
@@ -175,7 +192,9 @@ lyrics track: Artist - Title | source: spicy-syllable | lines: 39 | colors: {…
 ## Limitations
 
 - Hyprland only. Other wlroots compositors would need the focus grab replaced.
-- The Spotify desktop client only; Spicetify does not support the Snap package.
+- The Spicetify extension needs the Spotify desktop client; Spicetify does not support the Snap package.
+- Players other than Spotify get line-synced lyrics only, and sync depends on how well the player reports
+  its position over MPRIS. Browser tabs can drift after seeking.
 - Word timing is exact only for songs that Spicy Lyrics has word-synced lyrics for.
 - Mood detection is a heuristic based on bass onsets and loudness. It settles about ten seconds into a song.
 - Tested on one machine (Arch Linux, 1080p at 144 Hz plus two 1440p monitors).
