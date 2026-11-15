@@ -58,6 +58,19 @@ ShellRoot {
     property real bridgeClock: 0
     property string mpKey: ""           // identifies the MPRIS track whose lyrics are loaded
     property string lyricSource: "none"
+    // Credit for the lyrics on screen: { text, links: [{ name, url }] }. Required by the
+    // Spicy Lyrics API terms, and shown for the other sources too.
+    property var credit: null
+
+    // Spicy Lyrics API key (optional): word-synced lyrics for any player. Read from the
+    // environment or from ~/.config/asterism/spicy-lyrics.secret. Never logged.
+    property string spicyKey: (Quickshell.env("SPICY_LYRICS_SECRET_KEY") || "").trim()
+    property var spicyMemo: ({})        // Spotify track id → converted lyrics, for this session
+    FileView {
+        path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/asterism/spicy-lyrics.secret"
+        printErrors: false
+        onLoaded: { const k = text().trim(); if (k) root.spicyKey = k }
+    }
     readonly property real startedMs: Date.now()
 
     // album cover from MPRIS
@@ -144,7 +157,7 @@ ShellRoot {
         function source(): string {
             return root.owner + (root.owner === "mpris" && root.mp ? " (" + (root.mp.identity || root.mp.dbusName) + ")" : "")
                 + " | " + root.artist + " - " + root.title + " | lyrics: " + root.lyricSource + " | lines: " + root.lines.length
-                + " | extension clients: " + root.bridgeClients
+                + " | extension clients: " + root.bridgeClients + " | Spicy Lyrics key: " + (root.spicyKey ? "yes" : "no")
         }
         function position(): string { return "line " + root.lineIdx + " word " + root.wordIdx + " at " + Math.round(root.now) + "ms" + (root.cardOn ? " | title card on" : "") + (root.breakK > 0 ? " | break " + root.breakK.toFixed(2) : "") }
     }
@@ -246,6 +259,17 @@ ShellRoot {
         if (m.type === "track") {
             bridgeTrack = m
             if (owner === "bridge") applyTrack(m)
+            // no word timing from the extension → ask the Spicy Lyrics API by track id
+            if (spicyKey && m.source !== "spicy-syllable" && /^[A-Za-z0-9]{22}$/.test(m.id || "")) {
+                spicyById(m.id, function (r) {
+                    if (!r || root.bridgeTrack !== m) return
+                    if (r.type !== "Syllable" && m.source !== "none") return   // only a real improvement
+                    const up = { type: "track", id: m.id, title: m.title, artist: m.artist, colors: m.colors,
+                                 source: r.sourceName, credit: r.credit, lines: r.lines }
+                    root.bridgeTrack = up
+                    if (root.owner === "bridge") root.applyTrack(up, true)
+                })
+            }
         } else if (m.type === "state") {
             bridgePos = m.position
             bridgeClock = Date.now()
@@ -269,6 +293,11 @@ ShellRoot {
         title = m.title || ""
         artist = m.artist || ""
         lyricSource = m.source || "none"
+        credit = (m.lines || []).length === 0 ? null
+            : m.credit ? m.credit
+            : lyricSource.startsWith("spicy") ? { text: "Lyrics: Spicy Lyrics", links: [] }
+            : lyricSource === "spotify" ? { text: "Lyrics: Spotify", links: [] }
+            : lyricSource === "lrclib" ? { text: "Lyrics: LRCLIB", links: [] } : null
         if (m.colors !== undefined) setColors(m.colors)
         win.slotA = -1
         win.slotB = -1
@@ -315,7 +344,8 @@ ShellRoot {
         // Spotify is the bridge's job while the extension is connected
         const cand = Mpris.players.values.filter(p => !(bridgeUp && isSpotify(p)))
         if (!(bridgeUp && bridgePlaying)) {
-            const p = cand.find(x => x.isPlaying) ?? null
+            // a browser tab can appear as two players; prefer the one that reports a cover
+            const p = cand.find(x => x.isPlaying && x.trackArtUrl) ?? cand.find(x => x.isPlaying) ?? null
             if (p && (owner !== "mpris" || mp !== p) && !(owner === "mpris" && mp && mp.isPlaying)) {
                 owner = "mpris"
                 mp = p
@@ -343,6 +373,7 @@ ShellRoot {
     // Titles from video sites carry noise: "Artist - Song (Official Video)", "Artist - Topic".
     function cleanTitle(t) {
         return t.replace(/\s*[\(\[][^\)\]]*(official|video|audio|lyric|visuali[sz]er|\bmv\b|\bhd\b|\b4k\b|explicit)[^\)\]]*[\)\]]/ig, "")
+                .replace(/\s+[-–—|]\s+YouTube(\s+Music)?$/i, "")     // browser tab titles end with the site name
                 .replace(/\s*\|.*$/, "").trim()
     }
     function cleanArtist(a) {
@@ -361,20 +392,141 @@ ShellRoot {
         if (pre && a !== "" && pre[1].toLowerCase() === a.toLowerCase()) t = pre[2]
         // what to ask LRCLIB for, best guess first
         const tries = [{ title: t, artist: a }]
-        const parts = t.split(/\s+[-–—]\s+/)
-        if (parts.length === 2) {                     // "Artist - Song" in the title
-            tries.push({ title: parts[1], artist: parts[0] })
-            tries.push({ title: parts[0], artist: parts[1] })
+        const sp = t.match(/^(.+?)\s+[-–—]\s+(.+)$/)   // "Artist - Song" in the title
+        const parts = sp ? [sp[1], sp[2]] : [t]
+        if (sp) {
+            const alt = [{ title: parts[1], artist: parts[0] }, { title: parts[0], artist: parts[1] }]
+            if (a === "") { tries.length = 0; tries.push(alt[0], alt[1], { title: t, artist: "" }) }   // no artist reported: the split is the best guess
+            else tries.push(alt[0], alt[1])
         }
-        const shown = parts.length === 2 && (a === "" || rawArtist !== a) ? { title: parts[1], artist: parts[0] } : { title: t, artist: a }
+        const shown = sp && (a === "" || rawArtist !== a) ? { title: parts[1], artist: parts[0] } : { title: t, artist: a }
         applyTrack({ title: shown.title, artist: shown.artist, source: "none", colors: undefined, lines: [] })
         coverSampler.sample()
-        lrclib(tries, 0, album, dur, function (raw, hit) {
-            if (root.mpKey !== key || root.owner !== "mpris") return     // another song by now
-            if (!raw || !raw.length) return
-            applyTrack({ title: hit.title, artist: hit.artist, source: "lrclib", colors: undefined,
-                         lines: buildLines(raw, dur * 1000) }, true)
+        const viaLrclib = function () {
+            lrclib(tries, 0, album, dur, function (raw, hit) {
+                if (root.mpKey !== key || root.owner !== "mpris") return     // another song by now
+                if (raw && raw.length) {
+                    applyTrack({ title: hit.title, artist: hit.artist, source: "lrclib", colors: undefined,
+                                 lines: buildLines(raw, dur * 1000) }, true)
+                } else if (root.spicyKey && dur > 0) {
+                    // Last resort: the album version from Spicy Lyrics, ignoring the length. A video
+                    // with an intro is longer than the song, so these can run early.
+                    spicySearch(tries.slice(0, 2), 0, album, 0, true, function (r, q) {
+                        if (!r || root.mpKey !== key || root.owner !== "mpris") return
+                        applyTrack({ title: q.title, artist: q.artist, source: r.sourceName, credit: r.credit,
+                                     colors: undefined, lines: r.lines }, true)
+                    })
+                }
+            })
+        }
+        if (!spicyKey) { viaLrclib(); return }
+        // With a Spicy Lyrics API key: word-synced lyrics first, LRCLIB if it has nothing.
+        const got = function (r, q) {
+            if (root.mpKey !== key || root.owner !== "mpris") return
+            if (!r) { viaLrclib(); return }
+            applyTrack({ title: q.title, artist: q.artist, source: r.sourceName, credit: r.credit,
+                         colors: undefined, lines: r.lines }, true)
+        }
+        const sid = isSpotify(mp) ? String(mp.metadata["mpris:trackid"] || "").match(/([A-Za-z0-9]{22})$/) : null
+        if (sid) spicyById(sid[1], r => got(r, shown))            // Spotify without the extension
+        else spicySearch(tries.slice(0, 2), 0, album, dur, false, got)
+    }
+
+    // ───────── Spicy Lyrics API (developers.spicylyrics.org) ─────────
+    function spicyGet(path, cb) {
+        const x = new XMLHttpRequest()
+        x.onreadystatechange = function () {
+            if (x.readyState !== XMLHttpRequest.DONE) return
+            let j = null
+            if (x.status === 200) { try { j = JSON.parse(x.responseText) } catch (e) {} }
+            if (x.status !== 200 && x.status !== 404) console.warn("lyrics: Spicy Lyrics API answered", x.status)
+            cb(j && j.Body ? j.Body : null)
+        }
+        x.open("GET", "https://api.spicylyrics.org" + path)
+        x.setRequestHeader("Authorization", "Bearer " + spicyKey)
+        x.send()
+    }
+
+    // Lyrics for a Spotify track id → { lines, type, sourceName, credit } or null
+    function spicyById(id, cb) {
+        if (spicyMemo[id] !== undefined) { cb(spicyMemo[id]); return }
+        spicyGet("/v1/lyrics/" + id, function (b) {
+            const lines = b ? fromSpicy(b, (b.EndTime || 0) * 1000) : null
+            const r = lines ? { lines: lines, type: b.Type, credit: spicyCredit(b),
+                                sourceName: b.Type === "Syllable" ? "spicy-syllable" : "spicy-line" } : null
+            spicyMemo[id] = r
+            cb(r)
         })
+    }
+
+    // Find the track by title, then fetch its lyrics. Only matches the API itself trusts.
+    function spicySearch(tries, i, album, dur, exactOnly, cb) {
+        if (i >= tries.length) { cb(null, null); return }
+        const q = tries[i]
+        if (!q.title) { spicySearch(tries, i + 1, album, dur, exactOnly, cb); return }
+        const e = encodeURIComponent
+        spicyGet("/v1/tracks/search?limit=3&title=" + e(q.title) + (q.artist ? "&artist=" + e(q.artist) : "")
+                 + (album ? "&album=" + e(album) : "") + (dur > 0 ? "&duration=" + dur.toFixed(3) : ""), function (b) {
+            const hit = b && Array.isArray(b.results) ? b.results[0] : null
+            // "exact" is safe; "likely" only when we named an artist (a slightly different length)
+            if (!hit || !(hit.tier === "exact" || (hit.tier === "likely" && q.artist && !exactOnly))) { spicySearch(tries, i + 1, album, dur, exactOnly, cb); return }
+            spicyById(hit.id, function (r) {
+                if (r) cb(r, { title: hit.title || q.title, artist: (hit.artists || []).join(", ") || q.artist })
+                else spicySearch(tries, i + 1, album, dur, exactOnly, cb)
+            })
+        })
+    }
+
+    // The API's terms: always name the provider; for community syncs also credit the uploader and the maker.
+    function spicyCredit(b) {
+        if (b.source === "apple_music") return { text: "Lyrics: Apple Music, via Spicy Lyrics", links: [] }
+        if (b.source === "spotify") return { text: "Lyrics: Spotify, via Spicy Lyrics", links: [] }
+        if (b.source !== "spicy_lyrics") return { text: "Lyrics via Spicy Lyrics", links: [] }
+        const a = b.UploadAttribution || {}
+        const links = []
+        if (a.Maker && a.Maker.username) links.push({ label: "synced by", name: a.Maker.username, url: a.Maker.url || "" })
+        if (a.Uploader && a.Uploader.username) links.push({ label: "uploaded by", name: a.Uploader.username, url: a.Uploader.url || "" })
+        return { text: "Lyrics: Spicy Lyrics", links: links }
+    }
+
+    // Spicy Lyrics content → our { t, end, words: [{ text, t }] } lines (same as the extension)
+    function fromSpicy(c, duration) {
+        const ms = x => Math.round(Number(x) * 1000)
+        const clean = t => String(t === undefined || t === null ? "" : t).replace(/[\u200B\u200C\u200D\uFEFF]/g, "")
+        if (c.Type === "Syllable" && Array.isArray(c.Content)) {
+            const out = []
+            for (const g of c.Content) {
+                const lead = g ? g.Lead : null
+                if (!lead || !Array.isArray(lead.Syllables)) continue
+                const words = []
+                let cur = null
+                for (const sy of lead.Syllables) {
+                    if (!cur) cur = { text: "", t: ms(sy.StartTime) }
+                    cur.text += clean(sy.Text)
+                    if (!sy.IsPartOfWord) {            // syllables join until IsPartOfWord is false
+                        if (cur.text.trim()) words.push({ text: cur.text.trim(), t: cur.t })
+                        cur = null
+                    }
+                }
+                if (cur && cur.text.trim()) words.push({ text: cur.text.trim(), t: cur.t })
+                if (words.length) out.push({ t: ms(lead.StartTime), leadEnd: ms(lead.EndTime), words: words })
+            }
+            out.sort((x, y) => x.t - y.t)
+            // keep each line up a little after its last word, but not past the next line
+            for (let i = 0; i < out.length; i++) {
+                const next = i + 1 < out.length ? out[i + 1].t : (duration || out[i].leadEnd + 4000)
+                out[i].end = Math.max(out[i].leadEnd, Math.min(next, out[i].leadEnd + 1500))
+            }
+            return out.length ? out : null
+        }
+        if (c.Type === "Line" && Array.isArray(c.Content)) {
+            const raw = c.Content.filter(l => l && l.Text != null && l.StartTime != null)
+                .map(l => ({ t: ms(l.StartTime), text: clean(l.Text).trim() }))
+                .sort((x, y) => x.t - y.t)
+            const lines = buildLines(raw, duration)
+            return lines.length ? lines : null
+        }
+        return null      // "Static": no timings
     }
 
     function httpJson(url, cb) {
@@ -903,6 +1055,34 @@ ShellRoot {
                     color: root.liveAccent2
                 }
             }
+        }
+
+        // ───────── lyrics credit ─────────
+        // Fullscreen: always there, small and quiet; names open the contributor's page.
+        // Overlay: at the start of a song and after its last line (clicks pass through there).
+        Text {
+            id: creditLine
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 20 }
+            readonly property bool on: root.credit !== null && root.lines.length > 0
+                && (root.fullscreen || root.gapIntro || root.gapProgress < 0)
+            function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
+            text: {
+                const c = root.credit
+                if (!c) return ""
+                let t = esc(c.text)
+                for (const l of (c.links || []))
+                    t += " · " + esc(l.label) + " " + (l.url ? '<a href="' + esc(l.url).replace(/"/g, "&quot;") + '">' + esc(l.name) + "</a>" : esc(l.name))
+                return t
+            }
+            textFormat: Text.StyledText
+            linkColor: Qt.rgba(1, 1, 1, 0.75)
+            onLinkActivated: link => Qt.openUrlExternally(link)
+            color: Qt.rgba(1, 1, 1, 0.6)
+            font.family: root.fontFamily
+            font.pixelSize: 12
+            opacity: on ? (root.fullscreen ? 0.55 : 0.8) : 0
+            visible: opacity > 0.01
+            Behavior on opacity { NumberAnimation { duration: 800 } }
         }
 
         // ───────── running border: light that travels around the screen edge ─────────

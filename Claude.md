@@ -51,6 +51,12 @@ Quickshell config "lyrics" (quickshell/shell.qml + Constellation.qml)
      player, fetches LRCLIB lyrics itself (XMLHttpRequest), samples the cover colour with an
      invisible Canvas, and syncs the position from MPRIS. `owner` is "bridge" or "mpris";
      the bridge wins while Spotify plays with the extension connected.
+   • Spicy Lyrics API (optional, official: developers.spicylyrics.org, docs at /llms-full.txt):
+     key from $SPICY_LYRICS_SECRET_KEY or ~/.config/asterism/spicy-lyrics.secret (mode 600).
+     MPRIS tracks: /v1/tracks/search (tier exact, or likely with an artist) → /v1/lyrics/{id},
+     LRCLIB as fallback. Bridge tracks without word timing: /v1/lyrics/{spotifyId}.
+     The terms require the credit line (`credit`, `spicyCredit()`): keep it. 60 requests per
+     window; results are memoised per session. Never log or print the key.
    • state file ~/.local/state/lyrics-constellation ("0" = off) shared with bar buttons
    • IpcHandler target "lyrics": toggle, on, off, isOn, fullscreen, exitFullscreen,
      isFullscreen, position, mood, source

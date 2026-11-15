@@ -40,6 +40,7 @@ word-level timing for Spotify.
 | Spicetify | Optional, for Spotify. Adds Spotify's own lyrics and exact word timing. Needs Spicetify already working (`spicetify backup apply` has succeeded once). Tested with Spicetify 2.43. |
 | `cava` | Optional. Without it lyrics work, but nothing reacts to the music. |
 | Inter font | Optional. Any font works; set `fontFamily`. |
+| Spicy Lyrics API key | Optional. A free key from [developers.spicylyrics.org](https://developers.spicylyrics.org) gives word-synced lyrics for every player. See [Word-synced lyrics for every player](#word-synced-lyrics-for-every-player). |
 | Spicy Lyrics | Optional. A Spicetify Marketplace extension; when installed, songs it has word-synced lyrics for get exact word timing. |
 
 Arch Linux:
@@ -72,6 +73,21 @@ registers the Spicetify extension, and starts the overlay. It never uses `sudo`,
 it replaces as `<name>.bak`. It asks before running `spicetify apply`, because that restarts Spotify.
 
 Then play a song with lyrics.
+
+### Word-synced lyrics for every player
+
+Without a key, players other than Spotify get line-synced lyrics from LRCLIB. With a
+[Spicy Lyrics API](https://developers.spicylyrics.org) key they get the same word-synced lyrics as Spotify:
+
+1. Sign in at [developers.spicylyrics.org](https://developers.spicylyrics.org), create an application and copy
+   its secret key (`sl_sk_...`). It is shown once.
+2. Save it as `spicy-lyrics.secret` in this folder and run `./install.sh`. The file is git-ignored, and the
+   installer copies it to `~/.config/asterism/spicy-lyrics.secret`, readable only by you.
+   Setting `SPICY_LYRICS_SECRET_KEY` in the overlay's environment works too.
+
+The key is your own: do not share it or commit it. A small credit line names the lyrics provider, and for
+community syncs the people who made and uploaded them, as the API's terms require. In fullscreen the names
+are links.
 
 To start it at login, add this to your Hyprland config:
 
@@ -153,9 +169,18 @@ For Spotify with the extension, these are tried in order:
 2. **Spotify's own lyrics**, line-synced.
 3. **[LRCLIB](https://lrclib.net)**, line-synced.
 
-Every other player (and Spotify without the extension) uses **LRCLIB** only. Titles from video sites are
-cleaned up first ("Artist - Song (Official Video)" becomes artist and song), but a track with an unusual
-title may find no lyrics.
+Every other player (and Spotify without the extension) uses:
+
+1. **The Spicy Lyrics API**, if you have set a key. Word-synced where available. The track is found by
+   title, artist and length, and only a match the API itself rates as reliable is used.
+2. **LRCLIB**, line-synced.
+3. **The Spicy Lyrics API again, ignoring the length**, when neither had a version of the same length.
+   This is the album version, so on a video with an intro the lyrics can run early.
+
+With a key, Spotify songs that the extension could only get line-synced are also looked up in the API.
+
+Titles from video sites are cleaned up first ("Artist - Song (Official Video) - YouTube" becomes artist and
+song), but a track with an unusual title may find no lyrics.
 
 For line-synced lyrics, word times are estimated by spreading a line's words across its duration.
 
@@ -164,7 +189,8 @@ For line-synced lyrics, word times are estimated by spreading a line's words acr
 The overlay loads the cover image from the address the player reports. For players other than Spotify with
 the extension, it also asks `lrclib.net` for lyrics, sending the song title, artist, album and duration.
 The extension talks to Spotify's lyrics endpoint, `lrclib.net` (the same details) and Spotify's image CDN.
-The WebSocket listens on `127.0.0.1` only. Set `anyPlayer` to `false` to follow Spotify through the
+With a Spicy Lyrics API key, the overlay sends the same details, or the Spotify track id, to
+`api.spicylyrics.org` together with your key. The WebSocket listens on `127.0.0.1` only. Set `anyPlayer` to `false` to follow Spotify through the
 extension only.
 
 ## Troubleshooting
@@ -193,7 +219,7 @@ lyrics track: Artist - Title | source: spicy-syllable | lines: 39 | colors: {…
 
 - Hyprland only. Other wlroots compositors would need the focus grab replaced.
 - The Spicetify extension needs the Spotify desktop client; Spicetify does not support the Snap package.
-- Players other than Spotify get line-synced lyrics only, and sync depends on how well the player reports
+- Players other than Spotify get line-synced lyrics unless you set a Spicy Lyrics API key, and sync depends on how well the player reports
   its position over MPRIS. Browser tabs can drift after seeking.
 - Word timing is exact only for songs that Spicy Lyrics has word-synced lyrics for.
 - Mood detection is a heuristic based on bass onsets and loudness. It settles about ten seconds into a song.

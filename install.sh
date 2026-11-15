@@ -66,6 +66,16 @@ for f in shell.qml Constellation.qml cava.conf; do
     install_file "$HERE/quickshell/$f" "$QS_DIR/$f"
 done
 
+# ---------- Spicy Lyrics API key (optional) ----------
+# A key from developers.spicylyrics.org gives word-synced lyrics for every player.
+# Put it in ./spicy-lyrics.secret (git-ignored) and it is copied, readable only by you.
+KEY_DST="${XDG_CONFIG_HOME:-$HOME/.config}/asterism/spicy-lyrics.secret"
+if [ -s "$HERE/spicy-lyrics.secret" ]; then
+    say "Installing the Spicy Lyrics API key"
+    install -Dm600 "$HERE/spicy-lyrics.secret" "$KEY_DST"
+    echo "  copied to $KEY_DST"
+fi
+
 # ---------- Spicetify extension (optional) ----------
 if [ "$HAVE_SPICETIFY" = 1 ]; then
 EXT_DIR="$(dirname "$(spicetify -c)")/Extensions"
