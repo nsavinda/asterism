@@ -25,7 +25,7 @@ Item {
     property bool ghost: true
     property int ghostLeadMs: 700  // how long before the word the ghost starts to appear
     readonly property int nextIdx: shown && line ? wordIdx + 1 : -1
-    readonly property real ghostK: ghost && nextIdx >= 0 && nextIdx < line.words.length && nextIdx < pts.length
+    readonly property real ghostK: ghost && line && nextIdx >= 0 && nextIdx < line.words.length && nextIdx < pts.length
         ? Math.max(0, Math.min(1, 1 - (line.words[nextIdx].t - now) / ghostLeadMs)) : 0
 
     property var pts: []          // star positions

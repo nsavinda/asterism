@@ -74,7 +74,21 @@ ShellRoot {
     readonly property real startedMs: Date.now()
 
     // album cover from MPRIS
-    readonly property string coverArt: (owner === "mpris" ? mp : spotifyPlayer)?.trackArtUrl ?? ""
+    // A browser tab can show up as two players (the browser itself and plasma-browser-integration)
+    // and often only one of them reports the cover, so borrow it from the twin when ours has none.
+    readonly property string mprisArt: {
+        if (!mp) return ""
+        if (mp.trackArtUrl) return mp.trackArtUrl
+        const mine = cleanTitle(mp.trackTitle || "").toLowerCase()
+        if (!mine) return ""
+        for (const p of Mpris.players.values) {
+            if (p === mp || !p.trackArtUrl || isSpotify(p)) continue
+            const t = cleanTitle(p.trackTitle || "").toLowerCase()
+            if (t && (t === mine || t.includes(mine) || mine.includes(t))) return p.trackArtUrl
+        }
+        return ""
+    }
+    readonly property string coverArt: owner === "mpris" ? mprisArt : (spotifyPlayer?.trackArtUrl ?? "")
     onCoverArtChanged: console.log("lyrics cover:", coverArt || "(none)")
 
     // live colours: song colours when available, otherwise `accent`. Fade between songs.
@@ -347,9 +361,9 @@ ShellRoot {
             // a browser tab can appear as two players; prefer the one that reports a cover
             const p = cand.find(x => x.isPlaying && x.trackArtUrl) ?? cand.find(x => x.isPlaying) ?? null
             if (p && (owner !== "mpris" || mp !== p) && !(owner === "mpris" && mp && mp.isPlaying)) {
+                if (owner !== "mpris") mpKey = ""
                 owner = "mpris"
                 mp = p
-                mpKey = ""
             }
         }
         if (owner !== "mpris") return
@@ -359,7 +373,8 @@ ShellRoot {
             if (bridgeUp && bridgeTrack) { owner = "bridge"; applyTrack(bridgeTrack); basePos = bridgePos; baseClock = Date.now() }
             return
         }
-        const key = (mp.trackTitle || "") + "\n" + (mp.trackArtist || "")
+        // cleaned title only: the twin player of a browser tab names the same song differently
+        const key = cleanTitle(mp.trackTitle || "").toLowerCase()
         if (key !== mpKey && (mp.trackTitle || "") !== "") {
             mpKey = key
             mprisTrack(key)
