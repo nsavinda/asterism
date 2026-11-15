@@ -229,7 +229,13 @@ ShellRoot {
             win.slotB = -1
             lineIdx = -1
             wordIdx = -1
-            lines = m.lines || []
+            // drop double quotes (straight and curly) from the words
+            const ls = m.lines || []
+            for (const l of ls) {
+                for (const w of l.words) w.text = w.text.replace(/["\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, "")
+                l.words = l.words.filter(w => w.text.trim() !== "")
+            }
+            lines = ls.filter(l => l.words.length > 0)
             interlude = false
             gapIntro = true
             gapAge = 0
