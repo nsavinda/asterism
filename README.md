@@ -81,8 +81,8 @@ Without a key, players other than Spotify get line-synced lyrics from LRCLIB. Wi
 
 1. Sign in at [developers.spicylyrics.org](https://developers.spicylyrics.org), create an application and copy
    its secret key (`sl_sk_...`). It is shown once.
-2. Save it as `spicy-lyrics.secret` in this folder and run `./install.sh`. The file is git-ignored, and the
-   installer copies it to `~/.config/asterism/spicy-lyrics.secret`, readable only by you.
+2. Save it as `spicy-lyrics.key` in this folder and run `./install.sh`. The file is git-ignored, and the
+   installer copies it to `~/.config/asterism/spicy-lyrics.key`, readable only by you.
    Setting `SPICY_LYRICS_SECRET_KEY` in the overlay's environment works too.
 
 The key is your own: do not share it or commit it. A small credit line names the lyrics provider, and for

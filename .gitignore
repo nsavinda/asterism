@@ -1,5 +1,6 @@
 # secrets and local-only files — never commit
 *.secret
+*.key
 .env
 .env.*
 

@@ -52,7 +52,7 @@ Quickshell config "lyrics" (quickshell/shell.qml + Constellation.qml)
      invisible Canvas, and syncs the position from MPRIS. `owner` is "bridge" or "mpris";
      the bridge wins while Spotify plays with the extension connected.
    • Spicy Lyrics API (optional, official: developers.spicylyrics.org, docs at /llms-full.txt):
-     key from $SPICY_LYRICS_SECRET_KEY or ~/.config/asterism/spicy-lyrics.secret (mode 600).
+     key from $SPICY_LYRICS_SECRET_KEY or ~/.config/asterism/spicy-lyrics.key (mode 600).
      MPRIS tracks: /v1/tracks/search (tier exact, or likely with an artist) → /v1/lyrics/{id},
      LRCLIB as fallback. Bridge tracks without word timing: /v1/lyrics/{spotifyId}.
      The terms require the credit line (`credit`, `spicyCredit()`): keep it. 60 requests per
@@ -152,5 +152,5 @@ equivalent). Show the user the line and where it goes before editing.
 
 - Never delete or overwrite the user's existing configs; back up a file before editing it.
 - Ask before using `sudo`, installing AUR packages, or restarting Spotify.
-- Never commit `*.secret` files or core dumps (both are in `.gitignore`).
+- Never commit `*.key` or `*.secret` files or core dumps (all are in `.gitignore`).
 - Don't push; the user reviews and pushes.

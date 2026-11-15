@@ -63,11 +63,11 @@ ShellRoot {
     property var credit: null
 
     // Spicy Lyrics API key (optional): word-synced lyrics for any player. Read from the
-    // environment or from ~/.config/asterism/spicy-lyrics.secret. Never logged.
+    // environment or from ~/.config/asterism/spicy-lyrics.key. Never logged.
     property string spicyKey: (Quickshell.env("SPICY_LYRICS_SECRET_KEY") || "").trim()
     property var spicyMemo: ({})        // Spotify track id → converted lyrics, for this session
     FileView {
-        path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/asterism/spicy-lyrics.secret"
+        path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/asterism/spicy-lyrics.key"
         printErrors: false
         onLoaded: { const k = text().trim(); if (k) root.spicyKey = k }
     }

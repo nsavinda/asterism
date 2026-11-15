@@ -68,11 +68,11 @@ done
 
 # ---------- Spicy Lyrics API key (optional) ----------
 # A key from developers.spicylyrics.org gives word-synced lyrics for every player.
-# Put it in ./spicy-lyrics.secret (git-ignored) and it is copied, readable only by you.
-KEY_DST="${XDG_CONFIG_HOME:-$HOME/.config}/asterism/spicy-lyrics.secret"
-if [ -s "$HERE/spicy-lyrics.secret" ]; then
+# Put it in ./spicy-lyrics.key (git-ignored) and it is copied, readable only by you.
+KEY_DST="${XDG_CONFIG_HOME:-$HOME/.config}/asterism/spicy-lyrics.key"
+if [ -s "$HERE/spicy-lyrics.key" ]; then
     say "Installing the Spicy Lyrics API key"
-    install -Dm600 "$HERE/spicy-lyrics.secret" "$KEY_DST"
+    install -Dm600 "$HERE/spicy-lyrics.key" "$KEY_DST"
     echo "  copied to $KEY_DST"
 fi
 
