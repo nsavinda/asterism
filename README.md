@@ -21,7 +21,7 @@ word-level timing for Spotify.
   |---|---|
   | `constellation` | Each word is a star; the stars of a line link into a constellation. The default. |
   | `karaoke` | The whole line, centred. Each word fills with light as it is sung, and the next line waits underneath. The easiest to read and sing along to. |
-  | `focus` | One very large word at a time, popping in with a slight tilt, the previous two drifting up as echoes. Like a lyric video. |
+  | `focus` | Big text, a short phrase at a time, cut where the singer breathes. Words light up as they're sung, quick words sit smaller than held ones, a long note slowly swells, and finished phrases scroll up. Like a lyric video. |
   | `wave` | The line floats on a slow swell. Words rise out of it as they are sung, the swell grows with the loudness and the bass sends a ripple through it. |
 
 - **Any player.** Spotify, the YouTube Music desktop app, a browser tab, mpv: anything that reports its track

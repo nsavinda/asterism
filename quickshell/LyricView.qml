@@ -10,7 +10,7 @@ Item {
     readonly property var files: ({
         constellation: "Constellation.qml",   // words as stars, linked into a constellation
         karaoke: "Karaoke.qml",               // the whole line, words fill with light as sung
-        focus: "Focus.qml",                   // one huge word at a time, kinetic
+        focus: "Focus.qml",                   // big text, a short sung phrase at a time
         wave: "Wave.qml"                      // words rise out of a swell that moves with the music
     })
 

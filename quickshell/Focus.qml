@@ -1,6 +1,8 @@
 // ~/.config/quickshell/lyrics/Focus.qml
-// Profile "focus": one word at a time, very large, like a kinetic lyric video. Each word pops in
-// at the centre with a slight tilt; the previous two drift up as fading echoes.
+// Profile "focus": big text, a short phrase at a time, like a lyric video. The line is cut into
+// phrases of one to four words the way it would be sung (at punctuation and breaths, never right
+// after "the" or "to"). Words in the phrase light up as they are sung, quick little words sit
+// smaller than held ones, a held note slowly swells, and finished phrases scroll up and fade.
 import QtQuick
 import QtQuick.Effects
 
@@ -23,94 +25,164 @@ Item {
     property real mood: 0.7
     property bool ghost: true
 
-    readonly property real big: Math.round(fontSize * 1.55)
+    readonly property real big: Math.round(fontSize * 1.3)
     readonly property real cy: height * 0.46
+    readonly property int ease: Math.round(800 - 380 * mood)   // calm songs move slower
 
-    // anticipation: the next word, small and faint, below the current one
-    readonly property int nextIdx: shown && line ? wordIdx + 1 : -1
-    readonly property real ghostK: ghost && line && nextIdx >= 0 && nextIdx < line.words.length
-        ? Math.max(0, Math.min(1, 1 - (line.words[nextIdx].t - now) / 700)) : 0
+    property var chunks: []      // [{ words: [{ text, t, dur, x, k }], w }]
+    property var chunkOf: []     // word index → phrase index
+    readonly property int cur: !chunks.length ? -1
+        : wordIdx < 0 ? 0 : (chunkOf[Math.min(wordIdx, chunkOf.length - 1)] || 0)
+    // anticipation: the next phrase brightens a little just before it starts
+    readonly property real ghostK: cur >= 0 && cur + 1 < chunks.length
+        ? Math.max(0, Math.min(1, 1 - (chunks[cur + 1].words[0].t - now) / 700)) : 0
 
     opacity: shown ? (dimmed ? 0.5 : 1) : 0
     visible: opacity > 0.01
-    Behavior on opacity { NumberAnimation { duration: f.shown ? 200 : 450; easing.type: Easing.OutCubic } }
-    property real lift: shown ? 0 : -big * 0.5
-    Behavior on lift { NumberAnimation { duration: 500; easing.type: Easing.OutCubic } }
+    Behavior on opacity { NumberAnimation { duration: f.shown ? 300 : 600; easing.type: Easing.OutCubic } }
+    property real lift: shown ? 0 : -big * 0.4
+    Behavior on lift { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
 
-    // stable pseudo-random 0..1 per word, so a line always moves the same way
-    function hash(n) {
-        const x = Math.sin(n * 12.9898 + (line ? line.t : 0) * 0.00178) * 43758.5453
-        return x - Math.floor(x)
+    onLineChanged: relayout()
+    onBigChanged: relayout()
+    onFontFamilyChanged: relayout()
+
+    FontMetrics { id: fm; font.family: f.fontFamily; font.pixelSize: f.big; font.weight: Font.Bold }
+
+    // words a phrase should not end on
+    function glue(t) {
+        return /^(a|an|the|to|of|in|on|at|by|for|from|with|into|and|but|or|so|if|my|your|our|his|her|their|its|this|that|i|i'm|i'd|i'll|we're|you're)$/i
+            .test(t.replace(/[^\w']/g, ""))
+    }
+
+    function relayout() {
+        const L = line
+        if (!L || !L.words.length) { chunks = []; chunkOf = []; return }
+        const W = L.words, n = W.length
+        const out = [], of = []
+        let s = 0, chars = 0
+        for (let i = 0; i < n; i++) {
+            chars += W[i].text.length
+            const next = i + 1 < n ? W[i + 1] : null
+            const count = i - s + 1
+            const punct = /[,.;:!?…)\]]$/.test(W[i].text)
+            const gap = next ? next.t - W[i].t : 0
+            const breath = gap > 1100                              // a pause
+            const held = gap >= 750 && count >= 2                  // a long note closes a phrase
+            let cut = !next || punct || breath || held || count >= 3 || chars + next.text.length > 14
+            // "take you to | the place", not "take you to the | place"
+            if (cut && next && !punct && !breath && glue(W[i].text) && count < 4 && chars + next.text.length <= 17)
+                cut = false
+            of.push(out.length)
+            if (cut) { out.push(build(W, s, i, L.end)); s = i + 1; chars = 0 }
+        }
+        chunkOf = of
+        chunks = out
+    }
+
+    function build(W, s, e, end) {
+        const space = fm.advanceWidth(" ") * 1.15
+        const words = []
+        let x = 0
+        for (let i = s; i <= e; i++) {
+            const dur = (i + 1 < W.length ? W[i + 1].t : end) - W[i].t
+            // quick words sit smaller, held words carry the weight
+            const k = 0.8 + 0.2 * Math.max(0, Math.min(1, (dur - 160) / 540))
+            if (words.length) x += space * (k + words[words.length - 1].k) / 2
+            words.push({ text: W[i].text, t: W[i].t, dur: dur, x: x, k: k, i: i })
+            x += fm.advanceWidth(W[i].text) * k
+        }
+        return { words: words, w: x }
     }
 
     Repeater {
-        model: f.line ? f.line.words : []
+        model: f.chunks
 
-        delegate: Text {
-            id: w
+        delegate: Item {
+            id: ch
             required property var modelData
             required property int index
 
-            readonly property int age: f.wordIdx - index          // 0 = current, 1-2 = echoes
-            readonly property bool current: f.shown && age === 0
-            readonly property real fit: Math.min(1, f.width * 0.86 / Math.max(1, implicitWidth))
-            readonly property real tilt: (f.hash(index) - 0.5) * 9 * (0.4 + f.mood)
+            readonly property int rel: index - f.cur          // 0 = now, -1 = just sung, 1 = next
+            readonly property bool live: f.shown && rel === 0
+            readonly property real fit: Math.min(1, f.width * 0.88 / Math.max(1, modelData.w))
 
-            text: modelData.text
-            renderType: Text.CurveRendering
-            font.family: f.fontFamily
-            font.pixelSize: f.big
-            font.weight: Font.Bold
-            color: age === 0 ? "white" : Qt.tint(Qt.rgba(1, 1, 1, 0.8), Qt.alpha(f.accent, 0.35))
+            width: modelData.w
+            height: fm.height
+            x: (f.width - width) / 2
+            y: f.cy - height / 2 + f.lift
+               + (rel < 0 ? -f.big * (1.0 + 0.45 * (-rel - 1)) : rel > 0 ? f.big * (0.95 + 0.45 * (rel - 1)) : 0)
+            scale: fit * (rel === 0 ? 1 : rel === -1 ? 0.5 : 0.42)
+            opacity: rel === 0 ? 1 : rel === -1 ? 0.22 : rel === 1 && f.ghost ? 0.1 + 0.18 * f.ghostK : 0
+            visible: opacity > 0.005
 
-            x: f.width / 2 - width / 2 + (age > 0 ? (f.hash(index + 50) - 0.5) * f.width * 0.25 : 0)
-            y: f.cy - height / 2 + f.lift - (age > 0 ? f.big * (0.55 + 0.45 * age) : age < 0 ? -f.big * 0.25 : 0)
-            rotation: age >= 0 ? tilt * (age === 0 ? 1 : 0.4) : tilt * 2
-            scale: fit * (age < 0 ? 0.55 : age === 0 ? 1 : age === 1 ? 0.38 : 0.26)
-            opacity: age < 0 ? 0 : age === 0 ? 1 : age === 1 ? 0.3 : age === 2 ? 0.1 : 0
-            visible: opacity > 0.01 || age >= 0 && age <= 3
+            Behavior on y { NumberAnimation { duration: f.ease; easing.type: Easing.OutCubic } }
+            Behavior on scale { NumberAnimation { duration: f.ease; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: f.ease * 0.8 } }
 
-            // energetic songs: fast, springy arrival; calm songs: slower and smooth
-            Behavior on scale { NumberAnimation { duration: w.current ? 700 - 420 * f.mood : 450; easing.type: w.current ? Easing.OutBack : Easing.OutCubic; easing.overshoot: 1 + 2.2 * f.mood } }
-            Behavior on y { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
-            Behavior on x { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
-            Behavior on rotation { NumberAnimation { duration: 520; easing.type: Easing.OutCubic } }
-            Behavior on opacity { NumberAnimation { duration: w.current ? 140 : 420 } }
-
-            // beat on top, no smoothing so it follows the music
+            // the beat, gently, on the whole phrase
             transform: Scale {
-                origin.x: w.width / 2; origin.y: w.height / 2
-                xScale: w.current ? 1 + f.beat * f.beatPulse * 0.8 : 1
+                origin.x: ch.width / 2; origin.y: ch.height / 2
+                xScale: ch.live ? 1 + f.beat * f.beatPulse * 0.25 : 1
                 yScale: xScale
             }
 
-            layer.enabled: current
-            layer.textureSize: Qt.size(Math.ceil(width * 1.6), Math.ceil(height * 1.6))
+            // glow on the phrase being sung; fades out (rather than snapping off) as it scrolls away
+            property real glow: live ? 1 : 0
+            Behavior on glow { NumberAnimation { duration: 450 } }
+            layer.enabled: glow > 0.01
+            layer.textureSize: Qt.size(Math.ceil(width * 1.5), Math.ceil(height * 1.5))
             layer.smooth: true
             layer.effect: MultiEffect {
                 autoPaddingEnabled: true
                 shadowEnabled: true
                 shadowColor: Qt.lighter(f.accent, 1.3)
-                shadowOpacity: Math.min(1, 0.85 + f.beat * 0.3)
+                shadowOpacity: ch.glow * Math.min(1, 0.75 + f.beat * 0.3)
                 shadowBlur: 1.0
-                blurMax: Math.round(f.big * 0.5)
-                shadowScale: 1.02 + f.beat * 0.05
+                blurMax: Math.round(f.big * 0.45)
+                shadowScale: 1.02 + f.beat * 0.04
                 shadowHorizontalOffset: 0
                 shadowVerticalOffset: 0
             }
-        }
-    }
 
-    Text {
-        anchors.horizontalCenter: parent.horizontalCenter
-        y: f.cy + f.big * 0.75 + f.lift
-        text: f.nextIdx >= 0 && f.line && f.nextIdx < f.line.words.length ? f.line.words[f.nextIdx].text : ""
-        renderType: Text.CurveRendering
-        font.family: f.fontFamily
-        font.pixelSize: Math.round(f.fontSize * 0.32)
-        font.weight: Font.Medium
-        color: f.accent
-        opacity: f.ghostK * 0.45
-        scale: 0.8 + 0.2 * f.ghostK
+            Repeater {
+                model: ch.modelData.words
+
+                delegate: Text {
+                    id: w
+                    required property var modelData
+
+                    readonly property bool sung: modelData.i <= f.wordIdx
+                    readonly property bool current: f.shown && modelData.i === f.wordIdx
+                    // a held note swells while it is sung and settles after
+                    readonly property real swell: {
+                        if (modelData.dur < 650 || !sung) return 0
+                        const p = (f.now - modelData.t) / modelData.dur
+                        return p <= 1 ? Math.max(0, p) : Math.max(0, 1 - (p - 1) * modelData.dur / 450)
+                    }
+
+                    text: modelData.text
+                    renderType: Text.CurveRendering
+                    font.family: f.fontFamily
+                    font.pixelSize: Math.round(f.big * modelData.k)
+                    font.weight: Font.Bold
+                    color: !sung ? Qt.rgba(1, 1, 1, 0.24)
+                         : current ? Qt.tint("white", Qt.alpha(f.accent, 0.2)) : "white"
+                    Behavior on color { ColorAnimation { duration: 240 } }
+
+                    // share one baseline whatever the size; unsung words sit a touch lower
+                    x: modelData.x
+                    y: fm.ascent * (1 - modelData.k) + up
+                    property real up: sung ? 0 : f.big * 0.06
+                    Behavior on up { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+
+                    transform: Scale {
+                        origin.x: w.width / 2; origin.y: w.height * 0.75
+                        xScale: 1 + 0.07 * w.swell
+                        yScale: xScale
+                    }
+                }
+            }
+        }
     }
 }
