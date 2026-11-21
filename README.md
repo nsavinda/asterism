@@ -15,6 +15,15 @@ word-level timing for Spotify.
 
 ## Features
 
+- **Four visual profiles**, switchable while a song plays:
+
+  | Profile | Looks like |
+  |---|---|
+  | `constellation` | Each word is a star; the stars of a line link into a constellation. The default. |
+  | `karaoke` | The whole line, centred. Each word fills with light as it is sung, and the next line waits underneath. The easiest to read and sing along to. |
+  | `focus` | One very large word at a time, popping in with a slight tilt, the previous two drifting up as echoes. Like a lyric video. |
+  | `wave` | The line floats on a slow swell. Words rise out of it as they are sung, the swell grows with the loudness and the bass sends a ripple through it. |
+
 - **Any player.** Spotify, the YouTube Music desktop app, a browser tab, mpv: anything that reports its track
   over MPRIS. Spotify with the Spicetify extension gets the best timing.
 - **Word-by-word lyrics.** Uses real word timing when it is available, and estimates it from line timing otherwise.
@@ -105,6 +114,11 @@ To remove everything: `./uninstall.sh`.
 | Lyrics on / off | `qs -c lyrics ipc call lyrics toggle` |
 | Force on / off | `qs -c lyrics ipc call lyrics on` / `off` |
 | Start / stop the overlay | `qs -c lyrics &` / `pkill -f "^qs -c lyrics"` |
+| Switch profile | `Tab` / `Shift+Tab` in fullscreen, or `1`–`4` |
+| Set a profile | `qs -c lyrics ipc call lyrics profile karaoke` (`next`, `previous` also work) |
+| List profiles | `qs -c lyrics ipc call lyrics profiles` (the current one is in brackets) |
+
+The chosen profile is remembered across restarts, in `~/.local/state/asterism-profile`.
 
 The overlay starts in fullscreen when lyrics are on. `Esc` drops to the click-through overlay.
 In fullscreen, the cursor and the `Esc` hint hide after a few seconds without mouse movement.
@@ -134,6 +148,7 @@ pkill -f "^qs -c lyrics"; qs -c lyrics &
 | `immersive`, `particleReact` | `true`, `1.0` | Fullscreen backdrop, ambient light and starfield, and how strongly the starfield moves. |
 | `runningBorder`, `borderWidth`, `borderGlow`, `borderSpeedMs`, `beatBorder` | on | The light around the screen edge. |
 | `ambientMonitors` | `true` | Edge glow on the other monitors in fullscreen. |
+| `defaultProfile` | `"constellation"` | Profile used until you pick one; after that, the remembered choice wins. |
 | `idleHideMs` | `3500` | Delay before the cursor and hint hide in fullscreen. |
 | `interludeCard`, `interludeMinMs` | `true`, `3000` | Title card before the first line and stronger colour pulse in mid-song breaks, and how long a gap between lines counts as a break. |
 | `anyPlayer` | `true` | Follow any MPRIS player, not only Spotify through the extension. |

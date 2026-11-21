@@ -97,4 +97,7 @@ Hyprland (`hyprland.conf`):
 
 ```ini
 bind = SUPER, L, exec, qs -c lyrics ipc call lyrics fullscreen
+bind = SUPER SHIFT, L, exec, qs -c lyrics ipc call lyrics profile next
 ```
+
+In fullscreen, `Tab` / `Shift+Tab` and `1`–`4` switch the visual profile too.

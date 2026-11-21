@@ -7,6 +7,7 @@ Item {
     id: c
 
     property var line: null       // { t, end, words: [{ text, t }] }
+    property var nextLine: null   // part of the shared profile interface; unused here
     property bool shown: false
     property int wordIdx: -1
     property real now: 0

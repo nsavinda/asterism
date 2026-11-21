@@ -59,7 +59,12 @@ Quickshell config "lyrics" (quickshell/shell.qml + Constellation.qml)
      window; results are memoised per session. Never log or print the key.
    • state file ~/.local/state/lyrics-constellation ("0" = off) shared with bar buttons
    • IpcHandler target "lyrics": toggle, on, off, isOn, fullscreen, exitFullscreen,
-     isFullscreen, position, mood, source
+     isFullscreen, position, mood, source, profile <name|next|previous>, nextProfile, profiles
+   • visual profiles: two LyricView slots (A/B crossfade) each load a profile file. Every
+     profile has the same properties (line, nextLine, shown, wordIdx, now, dimmed, accent,
+     fontFamily, fontSize, beat, energy, beatPulse, mood, ghost); a new profile must declare
+     all of them and be added to `files` in LyricView.qml, `profileNames` in shell.qml and
+     the file lists in install.sh / uninstall.sh. Choice saved in ~/.local/state/asterism-profile.
 ```
 
 ### Message protocol (extension → Quickshell)
@@ -82,7 +87,9 @@ and about every 400 ms during playback.
 |---|---|
 | `spicetify/lyrics-bridge.js` | `~/.config/spicetify/Extensions/lyrics-bridge.js` |
 | `quickshell/shell.qml` | `~/.config/quickshell/lyrics/shell.qml` |
-| `quickshell/Constellation.qml` | `~/.config/quickshell/lyrics/Constellation.qml` |
+| `quickshell/LyricView.qml` | `~/.config/quickshell/lyrics/` — loads the chosen profile for one line |
+| `quickshell/Constellation.qml`, `Karaoke.qml`, `Focus.qml`, `Wave.qml` | `~/.config/quickshell/lyrics/` — the visual profiles |
+| `quickshell/rows.js` | `~/.config/quickshell/lyrics/` — centred word-row layout for karaoke and wave |
 | `quickshell/cava.conf` | `~/.config/quickshell/lyrics/cava.conf` |
 | `install.sh` / `uninstall.sh` | copy the files above into place / remove them |
 | `docs/bar-button.md` | bar buttons and keybinds |
@@ -113,6 +120,10 @@ equivalent). Show the user the line and where it goes before editing.
   (`qs -c lyrics ipc call lyrics isFullscreen`) and restore it afterwards.
 - MPRIS test without disturbing the screen: run a copy of the config with another `port`,
   another state file and a tiny window (`qs -p <copy>/shell.qml`) against a fake MPRIS player.
+- Visual check without the screen: load a test Item with a LyricView in a hidden PySide6
+  QQuickView (never shown) and save `grabWindow()` to PNG. The `offscreen` platform falls
+  back to the software renderer, which drops every MultiEffect glow; and force the platform
+  explicitly, since the session sets QT_QPA_PLATFORM=wayland.
 - QML's JS engine lacks some newer features (`String.matchAll`, `padStart`): avoid them.
 - Protocol test without Spotify: send a fake `track` and a `state` message with
   `playing: true` over the WebSocket.

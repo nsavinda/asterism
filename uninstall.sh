@@ -22,11 +22,12 @@ say "Stopping the overlay"
 pkill -f '^qs -c lyrics' 2>/dev/null || true
 
 say "Removing the Quickshell config"
-for f in shell.qml Constellation.qml cava.conf shell.qml.bak Constellation.qml.bak cava.conf.bak; do
+for f in shell.qml LyricView.qml Constellation.qml Karaoke.qml Focus.qml Wave.qml rows.js cava.conf; do
+    rm -f "$QS_DIR/$f.bak"
     rm -f "$QS_DIR/$f"
 done
 rmdir "$QS_DIR" 2>/dev/null || echo "  kept $QS_DIR (it contains other files)"
-rm -f "$STATE_FILE"
+rm -f "$STATE_FILE" "${XDG_STATE_HOME:-$HOME/.local/state}/asterism-profile"
 
 if command -v spicetify >/dev/null 2>&1; then
     say "Removing the Spicetify extension"

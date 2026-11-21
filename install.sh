@@ -62,7 +62,7 @@ install_file() {
 
 # ---------- Quickshell config ----------
 say "Installing the Quickshell config to $QS_DIR"
-for f in shell.qml Constellation.qml cava.conf; do
+for f in shell.qml LyricView.qml Constellation.qml Karaoke.qml Focus.qml Wave.qml rows.js cava.conf; do
     install_file "$HERE/quickshell/$f" "$QS_DIR/$f"
 done
 

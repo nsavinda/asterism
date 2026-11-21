@@ -38,6 +38,9 @@ ShellRoot {
     readonly property bool interludeCard: true    // intro: title card; mid-song breaks: colour pulses harder
     readonly property int interludeMinMs: 3000    // a gap between lines this long counts as a break
     readonly property bool anyPlayer: true        // also follow other players (YouTube Music, browsers, mpv…) over MPRIS
+    // How lyrics are drawn: "constellation", "karaoke", "focus" or "wave". This is the default;
+    // a profile picked with Tab (fullscreen) or `ipc call lyrics profile <name>` is remembered.
+    readonly property string defaultProfile: "constellation"
 
     // ───────── sources ─────────
     // "bridge": the Spicetify extension sends lyrics, colours and position (Spotify).
@@ -158,6 +161,28 @@ ShellRoot {
         stateFile.setText(on ? "1" : "0")
     }
 
+    // ───────── visual profile ─────────
+    readonly property var profileNames: ["constellation", "karaoke", "focus", "wave"]
+    property string profile: profileNames.includes(defaultProfile) ? defaultProfile : "constellation"
+    signal profileShown()
+    FileView {
+        id: profileFile
+        path: Quickshell.env("HOME") + "/.local/state/asterism-profile"
+        printErrors: false
+        onLoaded: { const p = text().trim(); if (root.profileNames.includes(p)) root.profile = p }
+    }
+    function setProfile(name) {
+        if (!profileNames.includes(name)) return false
+        profile = name
+        profileFile.setText(name)
+        profileShown()
+        return true
+    }
+    function stepProfile(d) {
+        const n = profileNames.length
+        setProfile(profileNames[(profileNames.indexOf(profile) + d + n) % n])
+    }
+
     IpcHandler {
         target: "lyrics"
         function toggle(): void { root.setOn(!root.lyricsOn) }
@@ -167,6 +192,14 @@ ShellRoot {
         function fullscreen(): void { root.fullscreen = !root.fullscreen }
         function exitFullscreen(): void { root.fullscreen = false }
         function isFullscreen(): bool { return root.fullscreen }
+        function profile(name: string): string {
+            if (name === "" || name === "next") root.stepProfile(1)
+            else if (name === "previous") root.stepProfile(-1)
+            else if (!root.setProfile(name)) return "unknown profile \"" + name + "\"; try: " + root.profileNames.join(", ")
+            return root.profile
+        }
+        function nextProfile(): string { root.stepProfile(1); return root.profile }
+        function profiles(): string { return root.profileNames.map(p => p === root.profile ? "[" + p + "]" : p).join(" ") }
         function mood(): string { return "mood " + root.mood.toFixed(2) + " dyn " + root.dyn.toFixed(2) + " beats/12s " + root.hitTimes.length + " energy " + root.energy.toFixed(2) + " base " + root.energyBase.toFixed(2) }
         function source(): string {
             return root.owner + (root.owner === "mpris" && root.mp ? " (" + (root.mp.identity || root.mp.dbusName) + ")" : "")
@@ -729,6 +762,13 @@ ShellRoot {
 
             focus: root.fullscreen
             Keys.onEscapePressed: root.fullscreen = false
+            // profiles: Tab / Shift+Tab step through them, 1–4 pick one
+            Keys.onTabPressed: root.stepProfile(1)
+            Keys.onBacktabPressed: root.stepProfile(-1)
+            Keys.onPressed: event => {
+                const i = event.key - Qt.Key_1
+                if (i >= 0 && i < root.profileNames.length) { root.setProfile(root.profileNames[i]); event.accepted = true }
+            }
 
             // ── immersive layers (fullscreen only) ──
             // 1. blurred, darkened album cover
@@ -923,7 +963,7 @@ ShellRoot {
         function wake() { idle = false; idleTimer.restart() }
         Timer { id: idleTimer; interval: root.idleHideMs; onTriggered: win.idle = true }
 
-        // two slots so the old constellation fades out while the new one fades in
+        // two slots so the old line fades out while the new one fades in
         property int slotA: -1
         property int slotB: -1
         property bool useA: true
@@ -938,9 +978,11 @@ ShellRoot {
             }
         }
 
-        Constellation {
+        LyricView {
             anchors.fill: parent
+            profile: root.profile
             line: win.slotA >= 0 && win.slotA < root.lines.length ? root.lines[win.slotA] : null
+            nextLine: win.slotA >= 0 && win.slotA + 1 < root.lines.length ? root.lines[win.slotA + 1] : null
             shown: root.lineIdx >= 0 && root.lineIdx === win.slotA
             wordIdx: shown ? root.wordIdx : (line ? line.words.length - 1 : -1)
             now: root.now
@@ -954,9 +996,11 @@ ShellRoot {
             mood: root.mood
             ghost: root.ghostStars
         }
-        Constellation {
+        LyricView {
             anchors.fill: parent
+            profile: root.profile
             line: win.slotB >= 0 && win.slotB < root.lines.length ? root.lines[win.slotB] : null
+            nextLine: win.slotB >= 0 && win.slotB + 1 < root.lines.length ? root.lines[win.slotB + 1] : null
             shown: root.lineIdx >= 0 && root.lineIdx === win.slotB
             wordIdx: shown ? root.wordIdx : (line ? line.words.length - 1 : -1)
             now: root.now
@@ -1070,6 +1114,28 @@ ShellRoot {
                     color: root.liveAccent2
                 }
             }
+        }
+
+        // ───────── profile name, shown briefly after switching ─────────
+        Text {
+            id: profileToast
+            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 64 }
+            text: root.profile.charAt(0).toUpperCase() + root.profile.slice(1)
+                + "   " + (root.profileNames.indexOf(root.profile) + 1) + " / " + root.profileNames.length
+            color: "white"
+            font.family: root.fontFamily
+            font.pixelSize: 18
+            font.weight: Font.DemiBold
+            font.letterSpacing: 2
+            opacity: 0
+            visible: opacity > 0.01
+            SequentialAnimation {
+                id: toastAnim
+                NumberAnimation { target: profileToast; property: "opacity"; to: 0.75; duration: 180 }
+                PauseAnimation { duration: 1200 }
+                NumberAnimation { target: profileToast; property: "opacity"; to: 0; duration: 600 }
+            }
+            Connections { target: root; function onProfileShown() { toastAnim.restart() } }
         }
 
         // ───────── lyrics credit ─────────
