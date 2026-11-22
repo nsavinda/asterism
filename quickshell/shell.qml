@@ -35,7 +35,8 @@ ShellRoot {
     readonly property bool moodAdaptive: true     // calm songs: gentle & dim; energetic songs: springy & vivid
     readonly property bool bounceBeat: true       // beat pulse rises and falls like a bounce (not a flash)
     readonly property int idleHideMs: 3500        // fullscreen: hide cursor + "Esc" hint after this long
-    readonly property bool interludeCard: true    // intro: title card; mid-song breaks: colour pulses harder
+    readonly property bool interludeCard: true    // intro: title card; mid-song breaks: more stars, colour pulses at full
+    readonly property real soundLight: 1.0        // song colour pulses with the music the whole song: 1 = as strong as in breaks, 0 = only in breaks
     readonly property int interludeMinMs: 3000    // a gap between lines this long counts as a break
     readonly property bool anyPlayer: true        // also follow other players (YouTube Music, browsers, mpv…) over MPRIS
     // How lyrics are drawn: "constellation", "karaoke", "focus" or "wave". This is the default;
@@ -117,6 +118,11 @@ ShellRoot {
     // Mid-song break: 0 → 1 while it lasts. No card; the song colour pulses harder with the music.
     property real breakK: interludeCard && interlude && !gapIntro && lines.length > 0 && playing ? 1 : 0
     Behavior on breakK { NumberAnimation { duration: 700; easing.type: Easing.InOutQuad } }
+    // Sound → light: how hard the song colour pulses with the music. Full in breaks,
+    // `soundLight` for the rest of the song (lyrics on screen included), off when paused.
+    property real songLight: playing ? Math.max(0, Math.min(1, soundLight)) : 0
+    Behavior on songLight { NumberAnimation { duration: 700; easing.type: Easing.InOutQuad } }
+    readonly property real lightK: Math.max(breakK, songLight)
     // Title card: only before the first line, and for songs with no lyrics at all (fullscreen).
     // Overlay: only briefly, so it doesn't sit on top of your windows.
     readonly property bool cardOn: interludeCard && title !== "" && (lines.length === 0
@@ -798,18 +804,18 @@ ShellRoot {
             Shape {
                 anchors.fill: parent
                 visible: root.immersive && root.fullscreen
-                // kept soft so the word glow stands out; in a mid-song break it pulses hard with the beat
-                opacity: Math.min(0.65 + 0.35 * root.breakK,
+                // breathes with loudness; on top, it pulses hard with the beat (`soundLight`, full in breaks)
+                opacity: Math.min(0.65 + 0.35 * root.lightK,
                     (0.2 + root.energy * 0.7 + root.beat * 0.15) * (0.45 + 0.55 * root.dyn) * (0.6 + 0.55 * root.mood)
-                    + root.breakK * (0.12 + root.beat * 0.55))
+                    + root.lightK * (0.12 + root.beat * 0.55))
                 ShapePath {
                     strokeColor: "transparent"
                     fillGradient: RadialGradient {
                         centerX: fsBg.width / 2; centerY: fsBg.height * 0.48
                         focalX: centerX; focalY: centerY
                         centerRadius: fsBg.height * 0.75
-                        GradientStop { position: 0.0; color: Qt.alpha(root.liveAccent, 0.32 + 0.3 * root.breakK) }
-                        GradientStop { position: 0.5; color: Qt.alpha(root.liveAccent, 0.10 + 0.14 * root.breakK) }
+                        GradientStop { position: 0.0; color: Qt.alpha(root.liveAccent, 0.32 + 0.3 * root.lightK) }
+                        GradientStop { position: 0.5; color: Qt.alpha(root.liveAccent, 0.10 + 0.14 * root.lightK) }
                         GradientStop { position: 1.0; color: "transparent" }
                     }
                     PathRectangle { x: 0; y: 0; width: fsBg.width; height: fsBg.height }
@@ -1080,9 +1086,9 @@ ShellRoot {
                     shadowEnabled: true
                     shadowColor: root.liveAccent
                     shadowBlur: 1.0
-                    blurMax: 48 + 40 * root.breakK * root.beat
+                    blurMax: 48 + 40 * root.lightK * root.beat
                     shadowOpacity: 0.9
-                    brightness: root.breakK * root.beat * 0.25
+                    brightness: root.lightK * root.beat * 0.25
                     shadowHorizontalOffset: 0
                     shadowVerticalOffset: 0
                 }
@@ -1187,7 +1193,7 @@ ShellRoot {
                 shadowScale: root.beatBorder ? 1.0 + root.beat * 0.012 : 1.0
                 shadowHorizontalOffset: 0
                 shadowVerticalOffset: 0
-                brightness: (root.beatBorder ? 0.1 + root.beat * 0.35 : 0.15) + root.breakK * root.beat * 0.4
+                brightness: (root.beatBorder ? 0.1 + root.beat * 0.35 : 0.15) + root.lightK * root.beat * 0.4
             }
 
             readonly property real bw: root.borderWidth

@@ -151,7 +151,7 @@ equivalent). Show the user the line and where it goes before editing.
 `offsetMs`, `accent`, `fontFamily`, `fontSize` (96), `musicReactive`, `beatPulse`,
 `dynamicColor`, `runningBorder`, `borderSpeedMs`, `borderWidth`, `borderGlow`, `immersive`,
 `beatBorder`, `particleReact`, `ghostStars`, `dynamics`, `ambientMonitors`, `moodAdaptive`,
-`bounceBeat`, `idleHideMs`, `interludeCard`, `interludeMinMs`, `anyPlayer`, `startFullscreen`, `port`. The README table explains each.
+`bounceBeat`, `idleHideMs`, `interludeCard`, `interludeMinMs`, `soundLight`, `anyPlayer`, `startFullscreen`, `port`. The README table explains each.
 
 ## Possible improvements (only if the user asks)
 
