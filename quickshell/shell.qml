@@ -18,7 +18,8 @@ ShellRoot {
     readonly property int offsetMs: 150          // + shows lyrics earlier, - later
     readonly property color accent: "#b388ff"
     readonly property string fontFamily: "Inter"  // any installed font
-    readonly property int fontSize: 96            // current word size (px)
+    readonly property int fontSize: 96            // current word size (px) on a 1080p screen
+    readonly property bool scaleWithScreen: true  // bigger screens get bigger text (false: fontSize px everywhere)
     readonly property bool musicReactive: true    // size follows the music (needs cava)
     readonly property real beatPulse: 0.3         // how much the current word grows on a beat
     readonly property bool dynamicColor: true     // take colours from the album art
@@ -138,6 +139,13 @@ ShellRoot {
     // transparent click-through overlay. Set to false to start as the overlay instead.
     readonly property bool startFullscreen: true
     property bool fullscreen: false
+    // Text follows the screen the lyrics are on: 1 on 1080p, 1.33 on 1440p, 2 on 4K. The short side
+    // decides, so a portrait 1440p screen gets the same size as a landscape one. Read from the
+    // screen, not the window, which is briefly 0×0 or 100×100 while it opens.
+    readonly property real screenShort: win.screen ? Math.min(win.screen.width, win.screen.height) : 0
+    readonly property real ui: scaleWithScreen && screenShort >= 480 ? screenShort / 1080 : 1
+    readonly property int textSize: Math.round(fontSize * ui)
+    onTextSizeChanged: console.log("lyrics text size: " + textSize + " px on " + (win.screen ? win.screen.name + " " + win.screen.width + "×" + win.screen.height : "?"))
 
     // Hot reload would start a 2nd WebSocket server while the old one still holds the
     // port. Restart instead after edits:  pkill -f "^qs -c lyrics"; qs -c lyrics &
@@ -906,8 +914,8 @@ ShellRoot {
             }
 
             Column {
-                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 56 }
-                spacing: 4
+                anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: Math.round(56 * root.ui) }
+                spacing: Math.round(4 * root.ui)
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: root.title
@@ -915,7 +923,7 @@ ShellRoot {
                     Behavior on opacity { NumberAnimation { duration: 700 } }
                     color: Qt.rgba(1, 1, 1, 0.55)
                     font.family: root.fontFamily
-                    font.pixelSize: 20
+                    font.pixelSize: Math.round(20 * root.ui)
                     font.weight: Font.DemiBold
                 }
                 Text {
@@ -925,14 +933,14 @@ ShellRoot {
                     Behavior on opacity { NumberAnimation { duration: 700 } }
                     color: Qt.rgba(1, 1, 1, 0.3)
                     font.family: root.fontFamily
-                    font.pixelSize: 14
+                    font.pixelSize: Math.round(14 * root.ui)
                 }
                 Text {           // hint: shown on entering fullscreen / moving the mouse, then fades
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: "Esc to exit"
                     color: Qt.rgba(1, 1, 1, 0.3)
                     font.family: root.fontFamily
-                    font.pixelSize: 13
+                    font.pixelSize: Math.round(13 * root.ui)
                     opacity: win.idle ? 0 : 1
                     Behavior on opacity { NumberAnimation { duration: 600 } }
                 }
@@ -995,7 +1003,7 @@ ShellRoot {
             dimmed: !root.playing
             accent: root.liveAccent
             fontFamily: root.fontFamily
-            fontSize: root.fontSize
+            fontSize: root.textSize
             beat: root.pulse
             energy: root.energy
             beatPulse: root.beatPulse * root.dyn * (0.3 + root.mood)
@@ -1013,7 +1021,7 @@ ShellRoot {
             dimmed: !root.playing
             accent: root.liveAccent
             fontFamily: root.fontFamily
-            fontSize: root.fontSize
+            fontSize: root.textSize
             beat: root.pulse
             energy: root.energy
             beatPulse: root.beatPulse * root.dyn * (0.3 + root.mood)
@@ -1062,7 +1070,7 @@ ShellRoot {
             id: card
             anchors.centerIn: parent
             width: parent.width * 0.8
-            spacing: root.fontSize * 0.14
+            spacing: root.textSize * 0.14
             opacity: root.cardOn ? (root.playing ? 1 : 0.45) : 0
             visible: opacity > 0.01
             scale: (root.cardOn ? 1 : 0.94) + root.pulse * 0.02 * root.dyn    // breathes with the beat
@@ -1075,7 +1083,7 @@ ShellRoot {
                 text: root.title
                 color: "white"
                 font.family: root.fontFamily
-                font.pixelSize: Math.round(root.fontSize * 0.6)
+                font.pixelSize: Math.round(root.textSize * 0.6)
                 font.weight: Font.DemiBold
                 wrapMode: Text.WordWrap
                 maximumLineCount: 2
@@ -1099,14 +1107,14 @@ ShellRoot {
                 text: root.artist
                 color: Qt.rgba(1, 1, 1, 0.6)
                 font.family: root.fontFamily
-                font.pixelSize: Math.round(root.fontSize * 0.26)
+                font.pixelSize: Math.round(root.textSize * 0.26)
                 elide: Text.ElideRight
                 renderType: Text.CurveRendering
             }
             // thin line that fills as the first lyric approaches
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: root.fontSize * 2.2
+                width: root.textSize * 2.2
                 height: 2
                 radius: 1
                 color: Qt.rgba(1, 1, 1, 0.14)
@@ -1125,14 +1133,14 @@ ShellRoot {
         // ───────── profile name, shown briefly after switching ─────────
         Text {
             id: profileToast
-            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 64 }
+            anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: Math.round(64 * root.ui) }
             text: root.profile.charAt(0).toUpperCase() + root.profile.slice(1)
                 + "   " + (root.profileNames.indexOf(root.profile) + 1) + " / " + root.profileNames.length
             color: "white"
             font.family: root.fontFamily
-            font.pixelSize: 18
+            font.pixelSize: Math.round(18 * root.ui)
             font.weight: Font.DemiBold
-            font.letterSpacing: 2
+            font.letterSpacing: 2 * root.ui
             opacity: 0
             visible: opacity > 0.01
             SequentialAnimation {
@@ -1149,7 +1157,7 @@ ShellRoot {
         // Overlay: at the start of a song and after its last line (clicks pass through there).
         Text {
             id: creditLine
-            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: 20 }
+            anchors { horizontalCenter: parent.horizontalCenter; bottom: parent.bottom; bottomMargin: Math.round(20 * root.ui) }
             readonly property bool on: root.credit !== null && root.lines.length > 0
                 && (root.fullscreen || root.gapIntro || root.gapProgress < 0)
             function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
@@ -1166,7 +1174,7 @@ ShellRoot {
             onLinkActivated: link => Qt.openUrlExternally(link)
             color: Qt.rgba(1, 1, 1, 0.6)
             font.family: root.fontFamily
-            font.pixelSize: 12
+            font.pixelSize: Math.round(12 * root.ui)
             opacity: on ? (root.fullscreen ? 0.55 : 0.8) : 0
             visible: opacity > 0.01
             Behavior on opacity { NumberAnimation { duration: 800 } }

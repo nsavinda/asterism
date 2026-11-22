@@ -148,7 +148,7 @@ equivalent). Show the user the line and where it goes before editing.
 
 ## Settings (top of shell.qml)
 
-`offsetMs`, `accent`, `fontFamily`, `fontSize` (96), `musicReactive`, `beatPulse`,
+`offsetMs`, `accent`, `fontFamily`, `fontSize` (96, for 1080p), `scaleWithScreen` (profiles get `root.textSize`, the scaled size; small UI text uses `root.ui`), `musicReactive`, `beatPulse`,
 `dynamicColor`, `runningBorder`, `borderSpeedMs`, `borderWidth`, `borderGlow`, `immersive`,
 `beatBorder`, `particleReact`, `ghostStars`, `dynamics`, `ambientMonitors`, `moodAdaptive`,
 `bounceBeat`, `idleHideMs`, `interludeCard`, `interludeMinMs`, `soundLight`, `anyPlayer`, `startFullscreen`, `port`. The README table explains each.

@@ -137,7 +137,8 @@ pkill -f "^qs -c lyrics"; qs -c lyrics &
 | Setting | Default | What it does |
 |---|---|---|
 | `offsetMs` | `150` | Shows lyrics earlier (positive) or later (negative). Try `0` with word-synced lyrics, and a negative value with Bluetooth headphones. |
-| `fontFamily`, `fontSize` | `"Inter"`, `96` | Font and size of the active word. |
+| `fontFamily`, `fontSize` | `"Inter"`, `96` | Font and size of the active word on a 1080p screen. |
+| `scaleWithScreen` | `true` | Scale all text with the screen the lyrics are on, by its short side: 96 px on 1080p, 128 px on 1440p (landscape or portrait), 192 px on 4K. `false` uses `fontSize` everywhere. |
 | `accent` | `#b388ff` | Colour used when the cover has no usable colour. |
 | `dynamicColor` | `true` | Take colours from the album cover. |
 | `startFullscreen` | `true` | Open in fullscreen when lyrics turn on. |
